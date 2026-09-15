@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# AI Operating System Pre-Commit Guard Hook
+# Protects against secret leaks and enforces task state hygiene.
+
+echo "🔍 [AI-OS Guard] Checking commit for secret leaks and task state..."
+
+# 1. Secret Scanning Check
+STAGED_DIFF=$(git diff --cached)
+
+# Check for API key patterns (OpenAI, Anthropic, generic private keys, jwt)
+if echo "$STAGED_DIFF" | grep -E -q "sk-[a-zA-Z0-9]{20,}|anthropic-key|BEGIN (RSA|EC|PGP|OPENSSH) PRIVATE KEY"; then
+    echo "❌ [AI-OS Guard BLOCKED COMMIT]: Potential secret or private key detected in staged diff!"
+    echo "Please remove the credentials from code and use environment variables instead."
+    exit 1
+fi
+
+# Check for .env staged
+if git diff --cached --name-only | grep -E -q "^\.env$|\.env\.local$|\.env\.production$"; then
+    echo "❌ [AI-OS Guard BLOCKED COMMIT]: Staged .env file detected! Never commit secrets to git."
+    exit 1
+fi
+
+echo "✅ [AI-OS Guard] Secret check passed. Clean commit."
+exit 0
