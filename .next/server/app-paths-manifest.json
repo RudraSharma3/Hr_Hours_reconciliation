@@ -1,0 +1,11 @@
+{
+  "/dashboard/page": "app/dashboard/page.js",
+  "/erp-import/page": "app/erp-import/page.js",
+  "/reconciliation/[id]/page": "app/reconciliation/[id]/page.js",
+  "/reconciliation/page": "app/reconciliation/page.js",
+  "/confirm/[token]/page": "app/confirm/[token]/page.js",
+  "/api/confirm/[token]/route": "app/api/confirm/[token]/route.js",
+  "/api/dashboard/route": "app/api/dashboard/route.js",
+  "/api/reconciliation/route": "app/api/reconciliation/route.js",
+  "/api/reconciliation/[id]/route": "app/api/reconciliation/[id]/route.js"
+}

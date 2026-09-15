@@ -1,0 +1,52 @@
+{
+  "name": "employee-hours-reconciliation",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma migrate reset --force",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "job:pull-erpnext": "tsx scripts/run-job.ts pullErpNext",
+    "job:generate-requests": "tsx scripts/run-job.ts generateRequests",
+    "job:send-reminders": "tsx scripts/run-job.ts sendReminders",
+    "job:escalate": "tsx scripts/run-job.ts escalate"
+  },
+  "dependencies": {
+    "@prisma/client": "5.19.1",
+    "bcryptjs": "2.4.3",
+    "jose": "^6.2.12",
+    "next": "14.2.15",
+    "nodemailer": "6.9.14",
+    "papaparse": "5.4.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "uuid": "9.0.1",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/node": "20.14.2",
+    "@types/nodemailer": "^8.0.1",
+    "@types/papaparse": "5.3.14",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@types/uuid": "9.0.8",
+    "autoprefixer": "10.4.19",
+    "postcss": "8.4.38",
+    "prisma": "5.19.1",
+    "tailwindcss": "3.4.4",
+    "tsx": "4.16.2",
+    "typescript": "5.5.2",
+    "vitest": "1.6.0"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}
