@@ -1,0 +1,201 @@
+// Employee Hours Reconciliation Automation — Data Model
+// SQLite for local dev/demo. Swap provider + DATABASE_URL for Postgres in
+// production (see README "Moving to Postgres").
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Core reference data
+// ---------------------------------------------------------------------------
+
+model Employee {
+  id            String   @id @default(uuid())
+  employeeCode  String   @unique // external/ERP employee id, e.g. "EMP-1001"
+  name          String
+  email         String   @unique
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  reconciliations ReconciliationRecord[]
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  projectCode String   @unique // external/ERP project id, e.g. "PRJ-APOLLO"
+  name        String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reconciliations ReconciliationRecord[]
+}
+
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// ERP import tracking — every import is preserved, never overwritten in place
+// ---------------------------------------------------------------------------
+
+model ErpImportBatch {
+  id           String   @id @default(uuid())
+  fileName     String
+  importedAt   DateTime @default(now())
+  rowCount     Int
+  successCount Int
+  errorCount   Int
+  rawContent   String // full CSV text, retained for audit
+  errors       String? // JSON array of row-level error messages
+
+  erpRows ErpTimesheetRow[]
+}
+
+// One row per (employee, project, month) as imported from ERP, tied to the batch
+// that created it. If a later import updates the same combination, the old row
+// is preserved and a new one is added — history is never destroyed.
+model ErpTimesheetRow {
+  id              String   @id @default(uuid())
+  batchId         String
+  employeeCode    String
+  projectCode     String
+  month           String // format YYYY-MM
+  erpHours        Float
+  createdAt       DateTime @default(now())
+  isCurrent       Boolean  @default(true) // only one current row per employee+project+month
+
+  batch ErpImportBatch @relation(fields: [batchId], references: [id])
+
+  @@index([employeeCode, projectCode, month])
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation
+// ---------------------------------------------------------------------------
+
+// NOTE: SQLite has no native enum type, and Prisma's SQLite connector does
+// not support Prisma-level enums either — so `status` is a plain String
+// here, constrained at the application layer instead. The allowed values
+// (kept in sync with src/lib/statusTypes.ts) are exactly:
+//   AWAITING_RESPONSE | MATCHED | FLAGGED | CORRECTION_REQUESTED | RESOLVED | ESCALATED
+// If you migrate to Postgres/MySQL (see README "Moving to Postgres"), you
+// can optionally reintroduce a real `enum ReconciliationStatus { ... }` and
+// change this field's type back to it — the application code already keys
+// off the same string literals either way.
+
+model ReconciliationRecord {
+  id      String @id @default(uuid())
+  month   String // YYYY-MM
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  erpHours              Float
+  erpImportRowId        String? // link back to the ERP row this reconciliation was generated from
+
+  employeeConfirmedHours Float?
+  difference             Float?
+  result                 Int?   // 1 = matched, 0 = flagged. Null until employee responds.
+
+  status String @default("AWAITING_RESPONSE") // see ReconciliationStatus in src/lib/statusTypes.ts
+
+  employeeExplanation String?
+
+  reminderCount    Int      @default(0)
+  lastReminderAt   DateTime?
+  escalated        Boolean  @default(false)
+  escalatedAt      DateTime?
+
+  createdAt   DateTime  @default(now())
+  finalisedAt DateTime?
+
+  confirmationTokens ConfirmationToken[]
+  auditEvents        AuditEvent[]
+  messages           MessageLog[]
+
+  // one reconciliation record per employee+project+month
+  @@unique([employeeId, projectId, month])
+  @@index([status])
+  @@index([month])
+}
+
+// Secure, single-use, expiring links given to employees
+model ConfirmationToken {
+  id                     String   @id @default(uuid())
+  reconciliationRecordId String
+  reconciliationRecord   ReconciliationRecord @relation(fields: [reconciliationRecordId], references: [id])
+
+  tokenHash String   @unique // sha256 hash of the raw token — raw token is never stored
+  purpose   String   @default("INITIAL") // INITIAL | CORRECTION
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([reconciliationRecordId])
+}
+
+// Full audit trail: every state change, submission, correction and system action
+model AuditEvent {
+  id                     String   @id @default(uuid())
+  reconciliationRecordId String
+  reconciliationRecord   ReconciliationRecord @relation(fields: [reconciliationRecordId], references: [id])
+
+  eventType   String // e.g. REQUEST_CREATED, EMPLOYEE_SUBMITTED, REMINDER_SENT, ESCALATED, CORRECTED, RESOLVED
+  actor       String // "system" | "employee" | admin email
+  details     String? // JSON blob with before/after values etc.
+  createdAt   DateTime @default(now())
+
+  @@index([reconciliationRecordId])
+}
+
+// Every outbound (and mocked) message, for the message-history field requirement
+model MessageLog {
+  id                     String   @id @default(uuid())
+  reconciliationRecordId String
+  reconciliationRecord   ReconciliationRecord @relation(fields: [reconciliationRecordId], references: [id])
+
+  channel   String // EMAIL (future: TEAMS | SLACK | WHATSAPP)
+  template  String // INITIAL_REQUEST | MISMATCH_FOLLOWUP | REMINDER | ESCALATION_NOTICE
+  recipient String
+  subject   String?
+  body      String
+  mocked    Boolean  @default(true)
+  sentAt    DateTime @default(now())
+
+  @@index([reconciliationRecordId])
+}
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+model Settings {
+  id                    Int    @id @default(1)
+  reminderIntervalDays  Int    @default(3)
+  maxReminders          Int    @default(2)
+  escalationEmail       String @default("hr-escalations@example.com")
+  initialRequestSubject String @default("Please confirm your project hours for {{month}}")
+  initialRequestBody    String @default("Hi {{employeeName}},\n\nPlease confirm the hours you worked on {{projectName}} during {{month}} using the secure link below:\n\n{{link}}\n\nThanks,\nHR Team")
+  mismatchSubject       String @default("Action needed: hours mismatch for {{month}}")
+  mismatchBody          String @default("Hi {{employeeName}},\n\nOur records show a difference between your confirmed hours and the ERP timesheet for {{projectName}} ({{month}}).\n\nYou confirmed: {{confirmedHours}}\nERP shows: {{erpHours}}\nDifference: {{difference}}\n\nPlease review and correct or explain using the secure link below:\n\n{{link}}\n\nThanks,\nHR Team")
+  reminderSubject       String @default("Reminder: hours confirmation pending for {{month}}")
+  reminderBody          String @default("Hi {{employeeName}},\n\nThis is a reminder that we still need your confirmation of hours for {{projectName}} ({{month}}).\n\n{{link}}\n\nThanks,\nHR Team")
+  escalationSubject     String @default("Escalation: unresolved hours discrepancy for {{month}}")
+  escalationBody        String @default("An unresolved hours discrepancy needs review.\n\nEmployee: {{employeeName}}\nProject: {{projectName}}\nMonth: {{month}}\nConfirmed: {{confirmedHours}}\nERP: {{erpHours}}\nDifference: {{difference}}\nReminders sent: {{reminderCount}}")
+  updatedAt             DateTime @updatedAt
+}
