@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCronRequest } from '@/lib/cronAuth';
 import { generateReconciliationRequests } from '@/lib/reconciliationService';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Step 1+2+3+4: run this at the end of every month (see README "Scheduling
  * jobs" for how to wire this to real cron). Optional ?month=YYYY-MM to

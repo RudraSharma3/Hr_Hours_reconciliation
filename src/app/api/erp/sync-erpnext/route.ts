@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentAdmin } from '@/lib/auth/admin';
 import { importFromErpNext } from '@/lib/erpImportService';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   const admin = await getCurrentAdmin();
   if (!admin) {
