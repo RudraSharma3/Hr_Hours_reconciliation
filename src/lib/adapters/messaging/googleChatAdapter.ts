@@ -190,7 +190,9 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
           name: 'confirmedHours',
           label: `Enter your confirmed hours for ${ctx.projectName}`,
           type: 'SINGLE_LINE',
-          value: ctx.previousConfirmedHours != null ? String(ctx.previousConfirmedHours) : '',
+          ...(ctx.previousConfirmedHours != null
+            ? { value: String(ctx.previousConfirmedHours) }
+            : {}),
         },
       },
       {
@@ -359,7 +361,9 @@ export function buildMismatchCard(params: {
                     name: 'confirmedHours',
                     label: 'Corrected Hours',
                     type: 'SINGLE_LINE',
-                    value: String(params.confirmedHours),
+                    ...(params.confirmedHours != null
+                      ? { value: String(params.confirmedHours) }
+                      : {}),
                   },
                 },
                 {
@@ -367,7 +371,7 @@ export function buildMismatchCard(params: {
                     name: 'explanation',
                     label: 'Reason for discrepancy / Correction note',
                     type: 'MULTIPLE_LINE',
-                    value: params.explanation ?? '',
+                    ...(params.explanation ? { value: params.explanation } : {}),
                   },
                 },
                 {
@@ -378,7 +382,10 @@ export function buildMismatchCard(params: {
                         onClick: {
                           action: {
                             function: 'submitHoursConfirmation',
-                            parameters: [{ key: 'reconciliationRecordId', value: params.recordId }],
+                            parameters: [
+                              { key: 'reconciliationRecordId', value: params.recordId },
+                              { key: 'inputFieldName', value: 'confirmedHours' },
+                            ],
                           },
                         },
                       },
