@@ -46,6 +46,10 @@ export default function ErpImportClient() {
   const [csvResult, setCsvResult] = useState<SyncResult | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // Reset Data State
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+
   function loadBatches() {
     fetch('/api/erp/import')
       .then((r) => r.json())
@@ -56,6 +60,28 @@ export default function ErpImportClient() {
   useEffect(() => {
     loadBatches();
   }, []);
+
+  async function handleResetData() {
+    if (!window.confirm('Are you sure you want to clear all data? This will remove all dummy records, ERP batches, and reconciliation records, giving you a fresh clean slate with 0 records.')) {
+      return;
+    }
+    setResetting(true);
+    setResetResult(null);
+    try {
+      const res = await fetch('/api/admin/reset-data', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? 'Failed to reset data');
+        return;
+      }
+      setResetResult('✨ All records and import history cleared successfully! Database is completely fresh with 0 records.');
+      loadBatches();
+    } catch {
+      alert('Network error resetting data.');
+    } finally {
+      setResetting(false);
+    }
+  }
 
   // 1. Sync directly from ERPNext
   async function handleSyncErpNext(e: React.FormEvent) {
@@ -142,12 +168,28 @@ export default function ErpImportClient() {
 
   return (
     <div className="max-w-4xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">ERP & Timesheet Sync</h1>
-        <p className="text-sm text-slate-500">
-          Sync monthly employee timesheets directly from ERPNext, or upload a manual CSV export, and send confirmation requests to employees.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 mb-1">ERP & Timesheet Sync</h1>
+          <p className="text-sm text-slate-500">
+            Sync monthly employee timesheets directly from ERPNext, or upload a manual CSV export. Reconciliation requests are generated automatically.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleResetData}
+          disabled={resetting}
+          className="px-3 py-2 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors flex items-center gap-1.5 self-start sm:self-auto"
+        >
+          <span>🗑️</span> {resetting ? 'Resetting...' : 'Reset to 0 Records'}
+        </button>
       </div>
+
+      {resetResult && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium">
+          {resetResult}
+        </div>
+      )}
 
       {/* Step 1: ERPNext Direct Sync Card */}
       <div className="card p-6 border-2 border-indigo-100 bg-gradient-to-br from-white to-indigo-50/30">

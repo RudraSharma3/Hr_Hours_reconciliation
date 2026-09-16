@@ -26,8 +26,8 @@ export class GoogleChatAdapter implements MessagingAdapter {
       ? buildGoogleChatCardPayload(message)
       : buildGoogleChatTextPayload(message);
 
-    // 1. If no cloud credentials configured, run in clean local mock mode
-    if (!webhookUrl && !serviceAccountKey) {
+    // 1. If test env or no cloud credentials configured, run in clean local mock mode
+    if (process.env.NODE_ENV === 'test' || (!webhookUrl && !serviceAccountKey)) {
       // eslint-disable-next-line no-console
       console.log(
         `\n🤖 [MOCK GOOGLE CHAT BOT] Message to: ${message.recipient}\n` +
