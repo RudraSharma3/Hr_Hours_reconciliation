@@ -42,6 +42,51 @@ export class ErpNextAdapter implements ErpAdapter {
     const docs = await this.fetchTimesheetDocs(month, employeeCode);
     const { entries, skippedNoProject } = aggregateErpNextTimesheets(docs, month);
 
+    // Fetch employee details (company_email, personal_email, user_id) from ERPNext
+    try {
+      const baseUrl = process.env.ERPNEXT_BASE_URL;
+      const apiKey = process.env.ERPNEXT_API_KEY;
+      const apiSecret = process.env.ERPNEXT_API_SECRET;
+      if (baseUrl && apiKey && apiSecret) {
+        const empParams = new URLSearchParams({
+          fields: JSON.stringify(['name', 'employee_name', 'company_email', 'user_id', 'personal_email']),
+          limit_page_length: '0',
+        });
+        const empRes = await fetch(`${baseUrl}/api/resource/Employee?${empParams.toString()}`, {
+          headers: {
+            Authorization: `token ${apiKey}:${apiSecret}`,
+            Accept: 'application/json',
+          },
+        });
+        if (empRes.ok) {
+          const empJson = (await empRes.json()) as {
+            data: Array<{
+              name: string;
+              employee_name?: string;
+              company_email?: string;
+              user_id?: string;
+              personal_email?: string;
+            }>;
+          };
+          const empMap = new Map<string, { email?: string; name?: string }>();
+          for (const emp of empJson.data ?? []) {
+            const email = (emp.company_email || emp.user_id || emp.personal_email || '').trim();
+            empMap.set(emp.name, { email: email || undefined, name: emp.employee_name });
+          }
+
+          for (const entry of entries) {
+            const found = empMap.get(entry.employeeCode);
+            if (found) {
+              if (found.email) entry.employeeEmail = found.email;
+              if (found.name && !entry.employeeName) entry.employeeName = found.name;
+            }
+          }
+        }
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+
     const errors: { row: number; message: string }[] = [];
     if (skippedNoProject > 0) {
       errors.push({
