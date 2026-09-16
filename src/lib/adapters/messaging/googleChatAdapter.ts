@@ -398,13 +398,14 @@ export function buildMismatchCard(params: {
  * Builds a card listing an employee's pending reconciliation requests when queried.
  */
 export function buildPendingRequestsCard(
-  employeeName: string,
+  titleSubtitle: string,
   records: Array<{
     id: string;
     projectName: string;
     month: string;
     erpHours: number;
     status: string;
+    employeeName?: string;
   }>
 ) {
   if (records.length === 0) {
@@ -415,7 +416,7 @@ export function buildPendingRequestsCard(
           card: {
             header: {
               title: '🎉 All Caught Up!',
-              subtitle: employeeName,
+              subtitle: titleSubtitle,
             },
             sections: [
               {
@@ -441,10 +442,10 @@ export function buildPendingRequestsCard(
         card: {
           header: {
             title: `📋 Pending Timesheets (${records.length})`,
-            subtitle: employeeName,
+            subtitle: titleSubtitle,
           },
           sections: records.map((rec) => ({
-            header: `${rec.projectName} • ${rec.month}`,
+            header: `${rec.employeeName ? `${rec.employeeName} • ` : ''}${rec.projectName} • ${rec.month}`,
             widgets: [
               {
                 decoratedText: {
