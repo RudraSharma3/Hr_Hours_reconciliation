@@ -56,13 +56,39 @@ const CARDS: { key: keyof Summary; label: string; accent: string; href?: string 
 export default function DashboardClient() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
 
-  useEffect(() => {
+  function loadDashboard() {
+    setLoading(true);
     fetch('/api/dashboard')
       .then((r) => r.json())
       .then(setSummary)
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadDashboard();
   }, []);
+
+  async function handleResetData() {
+    if (!window.confirm('Are you sure you want to clear all data? This will remove all dummy records, ERP batches, and reconciliation records, giving you a completely clean slate with 0 records.')) {
+      return;
+    }
+    setResetting(true);
+    try {
+      const res = await fetch('/api/admin/reset-data', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? 'Failed to reset data');
+        return;
+      }
+      loadDashboard();
+    } catch {
+      alert('Network error resetting data.');
+    } finally {
+      setResetting(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -74,8 +100,16 @@ export default function DashboardClient() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleResetData}
+            disabled={resetting}
+            className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            <span>🗑️</span> {resetting ? 'Resetting...' : 'Reset to 0 Records'}
+          </button>
           <Link href="/erp-import" className="btn-secondary">
-            + Import ERP CSV
+            + Import ERP Data
           </Link>
           <Link href="/reconciliation" className="btn-primary">
             View all records
