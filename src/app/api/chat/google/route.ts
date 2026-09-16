@@ -381,30 +381,75 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     );
   }
 
-  const pendingRecords = await prisma.reconciliationRecord.findMany({
-    where: {
-      employeeId: employee.id,
-      status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
-    },
-    include: { project: true, employee: true },
-    orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
-  });
+  let pendingRecords = [];
+  if (employee) {
+    pendingRecords = await prisma.reconciliationRecord.findMany({
+      where: {
+        employeeId: employee.id,
+        status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
+      },
+      include: { project: true, employee: true },
+      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
+      take: 10,
+    });
+  }
+
+  let isFallback = false;
+  let displayRecords = pendingRecords;
+
+  // If the querying user has 0 personal records, show open records from the imported batch
+  if (displayRecords.length === 0) {
+    const teamRecords = await prisma.reconciliationRecord.findMany({
+      where: {
+        status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
+      },
+      include: { project: true, employee: true },
+      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
+      take: 5,
+    });
+
+    if (teamRecords.length > 0) {
+      displayRecords = teamRecords;
+      isFallback = true;
+    }
+  }
+
+  if (displayRecords.length === 0) {
+    return NextResponse.json(
+      formatChatResponse(
+        {
+          text: `🎉 All caught up! There are 0 pending timesheet reconciliation requests in the system.`,
+          ...buildPendingRequestsCard(employee?.name ?? userName ?? 'Employee', []),
+        },
+        isAddon
+      )
+    );
+  }
+
+  const subtitle = isFallback
+    ? `Company Timesheets (Testing View)`
+    : employee?.name ?? userName ?? 'Employee';
 
   const cardPayload = buildPendingRequestsCard(
-    employee.name,
-    pendingRecords.map((r) => ({
+    subtitle,
+    displayRecords.map((r) => ({
       id: r.id,
       projectName: r.project.name,
       month: r.month,
       erpHours: r.erpHours,
       status: r.status,
+      employeeName: isFallback ? r.employee.name : undefined,
     }))
   );
+
+  const headerMsg = isFallback
+    ? `📋 *${employee?.name ?? userName}*: You have 0 personal timesheets in ERPNext. Showing *${displayRecords.length} open team timesheets* from your Dashboard for review & testing:`
+    : `📋 Found ${displayRecords.length} pending timesheets for *${employee?.name ?? userName}*.`;
 
   return NextResponse.json(
     formatChatResponse(
       {
-        text: `📋 Found ${pendingRecords.length} pending timesheets for *${employee.name}*.`,
+        text: headerMsg,
         ...cardPayload,
       },
       isAddon
