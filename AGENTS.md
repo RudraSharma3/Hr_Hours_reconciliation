@@ -68,3 +68,4 @@ Format: N. [CATEGORY] Rule description — rationale.
 1. [PROCESS] Read `docs/task-state.md` and `docs/architecture.md` before writing code — ensures alignment with current project context and architecture.
 2. [SECURITY] Never hardcode secrets or private keys — load credentials through environment variables or configuration managers.
 3. [TEST] Run project test suite and verify changes before declaring task completion — ensures code quality and prevents regressions.
+4. [PROCESS] When the user asks questions or for explanations regarding issues, investigate and explain first without modifying code or pushing commits unless explicitly instructed — prevents unauthorized code changes when user intent is purely diagnostic.

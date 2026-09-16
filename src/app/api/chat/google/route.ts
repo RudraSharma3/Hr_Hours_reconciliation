@@ -344,9 +344,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     employee = await prisma.employee.findFirst({
       where: {
         OR: [
-          { name: { contains: targetQuery, mode: 'insensitive' } },
-          { employeeCode: { contains: targetQuery, mode: 'insensitive' } },
-          { email: { contains: targetQuery, mode: 'insensitive' } },
+          { name: { contains: targetQuery, mode: 'insensitive' as const } },
+          { employeeCode: { contains: targetQuery, mode: 'insensitive' as const } },
+          { email: { contains: targetQuery, mode: 'insensitive' as const } },
         ],
       },
     });
@@ -357,9 +357,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     employee = await prisma.employee.findFirst({
       where: {
         OR: [
-          { email: { equals: userEmail, mode: 'insensitive' } },
+          { email: { equals: userEmail, mode: 'insensitive' as const } },
           ...(userName && userName !== 'Employee'
-            ? [{ name: { equals: userName, mode: 'insensitive' } }]
+            ? [{ name: { equals: userName, mode: 'insensitive' as const } }]
             : []),
         ],
       },
@@ -368,21 +368,26 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
 
   if (!employee && userName && userName !== 'Employee') {
     employee = await prisma.employee.findFirst({
-      where: { name: { contains: userName, mode: 'insensitive' } },
+      where: { name: { contains: userName, mode: 'insensitive' as const } },
     });
   }
 
   // Find pending records across employee ID, name, or email to capture all matches
+  const orConditions: any[] = [];
+  if (employee) {
+    orConditions.push({ employeeId: employee.id });
+    orConditions.push({ employee: { name: { equals: employee.name, mode: 'insensitive' as const } } });
+  }
+  if (userEmail) {
+    orConditions.push({ employee: { email: { equals: userEmail, mode: 'insensitive' as const } } });
+  }
+  if (userName && userName !== 'Employee') {
+    orConditions.push({ employee: { name: { contains: userName, mode: 'insensitive' as const } } });
+  }
+
   const pendingRecords = await prisma.reconciliationRecord.findMany({
     where: {
-      OR: [
-        ...(employee ? [{ employeeId: employee.id }] : []),
-        ...(employee ? [{ employee: { name: { equals: employee.name, mode: 'insensitive' } } }] : []),
-        ...(userEmail ? [{ employee: { email: { equals: userEmail, mode: 'insensitive' } } }] : []),
-        ...(userName && userName !== 'Employee'
-          ? [{ employee: { name: { contains: userName, mode: 'insensitive' } } }]
-          : []),
-      ],
+      ...(orConditions.length > 0 ? { OR: orConditions } : {}),
       status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
     },
     include: { project: true, employee: true },
