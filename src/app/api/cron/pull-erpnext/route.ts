@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCronRequest } from '@/lib/cronAuth';
 import { importFromErpNext } from '@/lib/erpImportService';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Company-wide ERPNext pull for a given month — a full resync, useful at
  * month-end even if the per-employee webhook (src/app/api/erp/webhook/erpnext)

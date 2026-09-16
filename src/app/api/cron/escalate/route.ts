@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorizedCronRequest } from '@/lib/cronAuth';
 import { escalateUnresolved } from '@/lib/reconciliationService';
 
+export const dynamic = 'force-dynamic';
+
 /** Step 10: run this daily, after send-reminders (see README "Scheduling jobs"). */
 export async function POST(req: NextRequest) {
   if (!isAuthorizedCronRequest(req)) {
