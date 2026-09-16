@@ -29,12 +29,11 @@ Implement an interactive **Google Chat Bot** for employee hours reconciliation, 
 ## 4. Current Status & Decisions
 
 - Interactive Google Chat Bot fully implemented and integrated with the zero-tolerance reconciliation workflow.
-- Investigated and resolved Google Chat "Bot not responding" root causes:
-  1. Top-level `actionResponse` object in synchronous `MESSAGE` event responses was violating the Google Chat API `Message` protobuf schema.
-  2. Deprecated / unsupported widget attributes (such as `Button.color` and non-standard `knownIcon` enum values) were causing schema validation errors on Google's backend.
-  3. Added full payload debugging and resilient employee resolution fallback for testing against real database records.
-- Verified all 44 tests across 8 test suites pass in Vitest.
-- Local mock mode enabled by default when Google credentials are not set.
+- Investigated and resolved Google Chat "Hours Reconciliation Bot is unable to process your request" root cause:
+  1. Card submission (`CARD_CLICKED`) handler was wrapping the response exclusively inside `hostAppDataAction`, which caused standard Google Chat API HTTP interactive endpoints to discard the response. Updated `formatChatResponse` to provide a dual-format payload containing top-level `actionResponse: { type: 'NEW_MESSAGE' }`, `text`, and `cardsV2` alongside `hostAppDataAction`.
+  2. Fixed missing `header` in `buildMismatchCard` and `buildMatchSuccessCard` sections to strictly adhere to Google Chat Cards v2 schema.
+  3. Added multi-strategy fallback extraction for form input values across `formInputs[name]`, `confirmedHours`, and dynamic field keys.
+- Verified local Next.js production build passes with 0 errors and deployed to `origin main`.
 
 ## 5. Handoff Notes
 
