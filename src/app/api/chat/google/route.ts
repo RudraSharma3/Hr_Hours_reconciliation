@@ -344,7 +344,8 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
 
   // 2. Check if a specific employee query was requested (e.g. "pending Byte019" or "pending Pavana")
   const targetQuery = text.replace(/^pending\s*/i, '').replace(/^status\s*/i, '').trim();
-  let employee = null;
+  let matchingEmployeeIds: string[] = [];
+  let empDisplayName = userName ?? 'Employee';
 
   if (targetQuery && targetQuery !== 'pending' && targetQuery !== 'status') {
     if (!isAdmin) {
@@ -360,7 +361,7 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     }
 
     // Admin allowed to query specific employee
-    employee = await prisma.employee.findFirst({
+    const targetEmps = await prisma.employee.findMany({
       where: {
         OR: [
           { name: { contains: targetQuery, mode: 'insensitive' as const } },
@@ -368,9 +369,10 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
           { email: { contains: targetQuery, mode: 'insensitive' as const } },
         ],
       },
+      select: { id: true, name: true },
     });
 
-    if (!employee) {
+    if (targetEmps.length === 0) {
       return NextResponse.json(
         formatChatResponse(
           {
@@ -380,52 +382,48 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
         )
       );
     }
+
+    matchingEmployeeIds = targetEmps.map((e) => e.id);
+    empDisplayName = targetEmps[0].name;
   } else {
-    // 3. Regular employee querying their own pending records
-    if (userEmail) {
-      employee = await prisma.employee.findFirst({
-        where: {
-          OR: [
-            { email: { equals: userEmail, mode: 'insensitive' as const } },
-            ...(userName && userName !== 'Employee'
-              ? [{ name: { equals: userName, mode: 'insensitive' as const } }]
-              : []),
-          ],
-        },
-      });
+    // 3. Regular employee querying their own pending records across all their profile IDs
+    const myEmps = await prisma.employee.findMany({
+      where: {
+        OR: [
+          ...(userEmail ? [{ email: { equals: userEmail, mode: 'insensitive' as const } }] : []),
+          ...(userName && userName !== 'Employee'
+            ? [{ name: { equals: userName, mode: 'insensitive' as const } }]
+            : []),
+        ],
+      },
+      select: { id: true, name: true },
+    });
+
+    if (myEmps.length === 0) {
+      return NextResponse.json(
+        formatChatResponse(
+          {
+            text: `⚠️ No timesheet profile found for *${userName}* (${userEmail || 'unknown email'}).\n\nPlease ensure your email or name matches your ERP timesheet profile.`,
+            ...buildPendingRequestsCard(userName ?? 'Employee', []),
+          },
+          isAddon
+        )
+      );
     }
 
-    if (!employee && userName && userName !== 'Employee') {
-      employee = await prisma.employee.findFirst({
-        where: { name: { equals: userName, mode: 'insensitive' as const } },
-      });
-    }
+    matchingEmployeeIds = myEmps.map((e) => e.id);
+    empDisplayName = myEmps[0].name ?? userName ?? 'Employee';
   }
 
-  // If no employee profile is found, NEVER leak un-filtered database records
-  if (!employee) {
-    return NextResponse.json(
-      formatChatResponse(
-        {
-          text: `⚠️ No timesheet profile found for *${userName}* (${userEmail || 'unknown email'}).\n\nPlease ensure your email or name matches your ERP timesheet profile.`,
-          ...buildPendingRequestsCard(userName ?? 'Employee', []),
-        },
-        isAddon
-      )
-    );
-  }
-
-  // Strictly query pending records for THIS employee only
+  // Strictly query pending records for this user's matching employee IDs
   const pendingRecords = await prisma.reconciliationRecord.findMany({
     where: {
-      employeeId: employee.id,
+      employeeId: { in: matchingEmployeeIds },
       status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
     },
     include: { project: true, employee: true },
     orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
   });
-
-  const empDisplayName = employee.name;
 
   const cardPayload = buildPendingRequestsCard(
     empDisplayName,
