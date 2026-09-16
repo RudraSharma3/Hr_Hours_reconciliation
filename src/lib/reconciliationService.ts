@@ -222,42 +222,47 @@ export async function submitEmployeeConfirmation(params: {
     link,
   });
 
-  const result = await messaging.send({
-    recipient: record.employee.email,
-    subject,
-    body,
-    template: 'MISMATCH_FOLLOWUP',
-    context: {
-      reconciliationRecordId: recordId,
-      employeeName: record.employee.name,
-      projectName: record.project.name,
-      month: record.month,
-      erpHours: record.erpHours,
-      previousConfirmedHours: confirmedHours,
-      previousDifference: match.difference,
-      kind: 'MISMATCH_FOLLOWUP',
-    },
-  });
+    try {
+      const result = await messaging.send({
+        recipient: record.employee.email,
+        subject,
+        body,
+        template: 'MISMATCH_FOLLOWUP',
+        context: {
+          reconciliationRecordId: recordId,
+          employeeName: record.employee.name,
+          projectName: record.project.name,
+          month: record.month,
+          erpHours: record.erpHours,
+          previousConfirmedHours: confirmedHours,
+          previousDifference: match.difference,
+          kind: 'MISMATCH_FOLLOWUP',
+        },
+      });
 
-  await prisma.messageLog.create({
-    data: {
-      reconciliationRecordId: recordId,
-      channel: messaging.channel,
-      template: 'MISMATCH_FOLLOWUP',
-      recipient: record.employee.email,
-      subject,
-      body,
-      mocked: result.mocked,
-    },
-  });
+      await prisma.messageLog.create({
+        data: {
+          reconciliationRecordId: recordId,
+          channel: messaging.channel,
+          template: 'MISMATCH_FOLLOWUP',
+          recipient: record.employee.email,
+          subject,
+          body,
+          mocked: result.mocked,
+        },
+      });
 
-  await prisma.reconciliationRecord.update({
-    where: { id: recordId },
-    data: { status: 'CORRECTION_REQUESTED' },
-  });
+      await prisma.reconciliationRecord.update({
+        where: { id: recordId },
+        data: { status: 'CORRECTION_REQUESTED' },
+      });
 
-  await logAudit(recordId, 'MISMATCH_FOLLOWUP_SENT', 'system', { recipient: record.employee.email });
-}
+      await logAudit(recordId, 'MISMATCH_FOLLOWUP_SENT', 'system', { recipient: record.employee.email });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('Outbound mismatch notification warning:', err);
+    }
+  }
 
 /**
  * Step 9: remind employees who have not responded (still AWAITING_RESPONSE

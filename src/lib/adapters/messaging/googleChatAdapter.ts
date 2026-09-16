@@ -255,7 +255,7 @@ export function buildMatchSuccessCard(params: {
   return {
     text: `✅ Timesheet Reconciled Successfully: ${params.projectName} (${params.month}) - ${params.confirmedHours} hrs.`,
     actionResponse: {
-      type: 'UPDATE_MESSAGE',
+      type: 'NEW_MESSAGE',
     },
     cardsV2: [
       {
@@ -312,7 +312,7 @@ export function buildMismatchCard(params: {
   return {
     text: `⚠️ Hours Difference Flagged: ${params.projectName} (${params.month}) - ${params.confirmedHours} hrs confirmed vs ${params.erpHours} hrs in ERP (Diff: ${params.difference} hrs).`,
     actionResponse: {
-      type: 'UPDATE_MESSAGE',
+      type: 'NEW_MESSAGE',
     },
     cardsV2: [
       {
