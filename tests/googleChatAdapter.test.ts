@@ -119,7 +119,7 @@ describe('GoogleChatAdapter & Cards v2', () => {
       erpHours: 76,
     });
 
-    expect(card.actionResponse.type).toBe('UPDATE_MESSAGE');
+    expect(card.actionResponse.type).toBe('NEW_MESSAGE');
     expect(card.cardsV2[0].card.header.title).toContain('Reconciled Successfully');
     const statusWidget = card.cardsV2[0].card.sections[0].widgets[0] as any;
     expect(statusWidget.decoratedText.text).toContain('MATCHED');
@@ -137,7 +137,7 @@ describe('GoogleChatAdapter & Cards v2', () => {
       explanation: 'Sick leave on Friday',
     });
 
-    expect(card.actionResponse.type).toBe('UPDATE_MESSAGE');
+    expect(card.actionResponse.type).toBe('NEW_MESSAGE');
     expect(card.cardsV2[0].card.header.title).toContain('Difference Flagged');
     const comparisonWidget = card.cardsV2[0].card.sections[0].widgets[1] as any;
     expect(comparisonWidget.decoratedText.text).toContain('60 hrs');

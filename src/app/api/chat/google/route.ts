@@ -160,13 +160,10 @@ function formatChatResponse(payload: any, isAddon: boolean) {
   if (isAddon) {
     // Strip actionResponse so message contains only valid Message schema
     const { actionResponse, ...cleanPayload } = payload;
-    const actionKey =
-      actionResponse?.type === 'UPDATE_MESSAGE' ? 'updateMessageAction' : 'createMessageAction';
-
     return {
       hostAppDataAction: {
         chatDataAction: {
-          [actionKey]: {
+          createMessageAction: {
             message: cleanPayload,
           },
         },
@@ -196,14 +193,19 @@ async function handleCardClick(event: any, isAddon: boolean) {
   }
 
   // 2. Google Chat API action parameters
-  for (const p of event.action?.parameters ?? []) {
-    paramsMap[p.key] = p.value;
+  const actionParams =
+    event.action?.parameters ??
+    event.chat?.buttonClickedPayload?.action?.parameters ??
+    event.buttonClickedPayload?.action?.parameters ??
+    [];
+  for (const p of actionParams) {
+    if (p?.key && p?.value) paramsMap[p.key] = p.value;
   }
 
   const recordId = paramsMap.reconciliationRecordId;
   if (!recordId) {
     const errorResp = formatChatResponse(
-      { text: '⚠️ Error: Missing reconciliationRecordId in action parameters.' },
+      { text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.' },
       isAddon
     );
     // eslint-disable-next-line no-console
@@ -211,32 +213,47 @@ async function handleCardClick(event: any, isAddon: boolean) {
     return NextResponse.json(errorResp);
   }
 
-  // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat common.formInputs)
+  // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat common.formInputs & action.formInputs)
   const formInputs =
     event.commonEventObject?.formInputs ??
     event.common?.formInputs ??
+    event.action?.formInputs ??
+    event.chat?.buttonClickedPayload?.action?.formInputs ??
     event.formInputs ??
     {};
 
   const inputFieldName = paramsMap.inputFieldName ?? 'confirmedHours';
-  const rawInput =
-    formInputs[inputFieldName]?.stringInputs?.value?.[0] ??
-    formInputs[inputFieldName]?.value?.[0] ??
-    formInputs[inputFieldName]?.value ??
-    formInputs[inputFieldName] ??
-    formInputs.confirmedHours?.stringInputs?.value?.[0] ??
-    formInputs.confirmedHours?.value?.[0] ??
-    formInputs.confirmedHours ??
-    '';
 
-  const hoursRaw = typeof rawInput === 'string' ? rawInput : (Array.isArray(rawInput) ? rawInput[0] : String(rawInput || ''));
+  // Helper to extract string from diverse form input shapes
+  const extractVal = (obj: any): string => {
+    if (!obj) return '';
+    if (typeof obj === 'string') return obj;
+    if (typeof obj === 'number') return String(obj);
+    if (Array.isArray(obj)) return obj[0] ? String(obj[0]) : '';
+    if (obj.stringInputs?.value?.[0]) return String(obj.stringInputs.value[0]);
+    if (obj.value?.[0]) return String(obj.value[0]);
+    if (obj.value != null) return String(obj.value);
+    return '';
+  };
 
-  const rawExplanation =
-    formInputs.explanation?.stringInputs?.value?.[0] ??
-    formInputs.explanation?.value?.[0] ??
-    formInputs.explanation ??
-    undefined;
-  const explanation = typeof rawExplanation === 'string' ? rawExplanation : undefined;
+  let hoursRaw = extractVal(formInputs[inputFieldName]);
+  if (!hoursRaw && formInputs.confirmedHours) {
+    hoursRaw = extractVal(formInputs.confirmedHours);
+  }
+
+  // If hoursRaw is still empty, scan all formInputs for any numeric input
+  if (!hoursRaw && typeof formInputs === 'object') {
+    for (const key of Object.keys(formInputs)) {
+      const candidate = extractVal(formInputs[key]);
+      if (candidate && !isNaN(parseFloat(candidate))) {
+        hoursRaw = candidate;
+        break;
+      }
+    }
+  }
+
+  const rawExplanation = extractVal(formInputs.explanation);
+  const explanation = rawExplanation.trim() ? rawExplanation.trim() : undefined;
 
   const confirmedHours = parseFloat(hoursRaw);
   if (isNaN(confirmedHours) || confirmedHours < 0 || confirmedHours > 1000) {
