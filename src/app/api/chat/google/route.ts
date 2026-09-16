@@ -336,11 +336,30 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     );
   }
 
-  // 1. If user explicitly queried a specific employee (e.g. "pending Prerna" or "pending Byte019")
+  // 1. Check if the current sender is an authenticated Admin
+  const adminUser = userEmail
+    ? await prisma.adminUser.findUnique({ where: { email: userEmail } })
+    : null;
+  const isAdmin = Boolean(adminUser);
+
+  // 2. Check if a specific employee query was requested (e.g. "pending Byte019" or "pending Pavana")
   const targetQuery = text.replace(/^pending\s*/i, '').replace(/^status\s*/i, '').trim();
   let employee = null;
 
   if (targetQuery && targetQuery !== 'pending' && targetQuery !== 'status') {
+    if (!isAdmin) {
+      // Non-admin attempting to query someone else -> strictly block
+      return NextResponse.json(
+        formatChatResponse(
+          {
+            text: `🔒 *Access Restricted*\n\nYou can only view and reconcile your own timesheets. Querying other employees' records is restricted to administrators.\n\nType *pending* to view your own timesheet requests.`,
+          },
+          isAddon
+        )
+      );
+    }
+
+    // Admin allowed to query specific employee
     employee = await prisma.employee.findFirst({
       where: {
         OR: [
@@ -350,51 +369,63 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
         ],
       },
     });
+
+    if (!employee) {
+      return NextResponse.json(
+        formatChatResponse(
+          {
+            text: `🔍 No employee found matching query: *${targetQuery}*.`,
+          },
+          isAddon
+        )
+      );
+    }
+  } else {
+    // 3. Regular employee querying their own pending records
+    if (userEmail) {
+      employee = await prisma.employee.findFirst({
+        where: {
+          OR: [
+            { email: { equals: userEmail, mode: 'insensitive' as const } },
+            ...(userName && userName !== 'Employee'
+              ? [{ name: { equals: userName, mode: 'insensitive' as const } }]
+              : []),
+          ],
+        },
+      });
+    }
+
+    if (!employee && userName && userName !== 'Employee') {
+      employee = await prisma.employee.findFirst({
+        where: { name: { equals: userName, mode: 'insensitive' as const } },
+      });
+    }
   }
 
-  // 2. Otherwise, find employee by their Google Chat email OR by displayName
-  if (!employee && userEmail) {
-    employee = await prisma.employee.findFirst({
-      where: {
-        OR: [
-          { email: { equals: userEmail, mode: 'insensitive' as const } },
-          ...(userName && userName !== 'Employee'
-            ? [{ name: { equals: userName, mode: 'insensitive' as const } }]
-            : []),
-        ],
-      },
-    });
+  // If no employee profile is found, NEVER leak un-filtered database records
+  if (!employee) {
+    return NextResponse.json(
+      formatChatResponse(
+        {
+          text: `⚠️ No timesheet profile found for *${userName}* (${userEmail || 'unknown email'}).\n\nPlease ensure your email or name matches your ERP timesheet profile.`,
+          ...buildPendingRequestsCard(userName ?? 'Employee', []),
+        },
+        isAddon
+      )
+    );
   }
 
-  if (!employee && userName && userName !== 'Employee') {
-    employee = await prisma.employee.findFirst({
-      where: { name: { contains: userName, mode: 'insensitive' as const } },
-    });
-  }
-
-  // Find pending records across employee ID, name, or email to capture all matches
-  const orConditions: any[] = [];
-  if (employee) {
-    orConditions.push({ employeeId: employee.id });
-    orConditions.push({ employee: { name: { equals: employee.name, mode: 'insensitive' as const } } });
-  }
-  if (userEmail) {
-    orConditions.push({ employee: { email: { equals: userEmail, mode: 'insensitive' as const } } });
-  }
-  if (userName && userName !== 'Employee') {
-    orConditions.push({ employee: { name: { contains: userName, mode: 'insensitive' as const } } });
-  }
-
+  // Strictly query pending records for THIS employee only
   const pendingRecords = await prisma.reconciliationRecord.findMany({
     where: {
-      ...(orConditions.length > 0 ? { OR: orConditions } : {}),
+      employeeId: employee.id,
       status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
     },
     include: { project: true, employee: true },
     orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
   });
 
-  const empDisplayName = employee?.name ?? userName ?? 'Employee';
+  const empDisplayName = employee.name;
 
   const cardPayload = buildPendingRequestsCard(
     empDisplayName,
