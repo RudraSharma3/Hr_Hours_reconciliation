@@ -42,26 +42,43 @@ export async function ingestErpEntries(params: {
 
   for (const entry of entries) {
     // Auto-provision or update Employee
-    const existingEmp = await prisma.employee.findUnique({
+    let existingEmp = await prisma.employee.findUnique({
       where: { employeeCode: entry.employeeCode },
     });
+
+    if (!existingEmp && entry.employeeEmail) {
+      existingEmp = await prisma.employee.findUnique({
+        where: { email: entry.employeeEmail },
+      });
+    }
+
+    if (!existingEmp && entry.employeeName) {
+      existingEmp = await prisma.employee.findFirst({
+        where: { name: { equals: entry.employeeName, mode: 'insensitive' } },
+      });
+    }
+
     if (!existingEmp) {
       const cleanCode = entry.employeeCode.toLowerCase().replace(/[^a-z0-9]/g, '');
       const emailBase = entry.employeeEmail || `${cleanCode}@company.local`;
       const emailInUse = await prisma.employee.findUnique({ where: { email: emailBase } });
       const finalEmail = emailInUse ? `${cleanCode}-${Date.now()}@company.local` : emailBase;
 
-      await prisma.employee.create({
+      existingEmp = await prisma.employee.create({
         data: {
           employeeCode: entry.employeeCode,
           name: entry.employeeName || entry.employeeCode,
           email: finalEmail,
         },
       });
-    } else if (entry.employeeName && existingEmp.name === existingEmp.employeeCode) {
+    } else {
       await prisma.employee.update({
         where: { id: existingEmp.id },
-        data: { name: entry.employeeName },
+        data: {
+          employeeCode: entry.employeeCode,
+          name: entry.employeeName || existingEmp.name,
+          ...(entry.employeeEmail ? { email: entry.employeeEmail } : {}),
+        },
       });
     }
 
