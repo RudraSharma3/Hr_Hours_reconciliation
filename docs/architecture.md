@@ -37,7 +37,8 @@ graph TB
     subgraph External Systems & Adapters
         ERPNext[ERPNext Instance<br/>(REST API & Webhooks)]
         SMTP[Email Server / SMTP<br/>(Nodemailer / Mock)]
-        Evolra[Google Chat / Evolra Bot<br/>(Interactive Cards & Webhooks)]
+        GoogleChat[Google Chat App Bot<br/>(Cards v2 & /api/chat/google)]
+        Evolra[Evolra Bot Proxy<br/>(Interactive Cards & Webhooks)]
     end
 
     Admin -->|Admin Session (JWT Cookie)| UI
@@ -51,6 +52,8 @@ graph TB
     CoreSvc -->|ErpAdapter| ERPNext
     ERPNext -->|HMAC-Signed Webhook| API
     CoreSvc -->|MessagingAdapter| SMTP
+    CoreSvc -->|MessagingAdapter| GoogleChat
+    GoogleChat -->|Inbound Webhook (/api/chat/google)| API
     CoreSvc -->|MessagingAdapter| Evolra
     Evolra -->|Inbound Webhook (Bearer)| API
 ```
@@ -60,12 +63,14 @@ graph TB
 | :--- | :--- | :--- | :--- |
 | **Admin Web UI** | HTTPS / HTTP Cookie | Bcrypt password verification, Edge JWT (`jose`) in `httpOnly` `SameSite=Lax` cookie | `src/middleware.ts`, `src/lib/auth/` |
 | **Employee Confirmation** | HTTPS / URL Route | Single-use expiring token (SHA-256 hashed in DB), 1:1 bound to `ReconciliationRecord` | `src/app/confirm/[token]`, `src/lib/tokens.ts` |
+| **Google Chat Bot** | HTTPS REST / Cards v2 / Inbound POST | Google Service Account Token / `GOOGLE_CHAT_VERIFICATION_TOKEN` | `src/lib/adapters/messaging/googleChatAdapter.ts`, `src/app/api/chat/google/route.ts` |
 | **Cron / Scheduler** | HTTPS / HTTP POST / CLI | Shared secret via `Authorization: Bearer <CRON_SECRET>` or `?secret=` | `src/app/api/cron/*`, `src/lib/cronAuth.ts`, `scripts/run-job.ts` |
 | **ERP: CSV Import** | Multipart form-data | Admin session protected | `src/lib/adapters/erp/csvAdapter.ts` |
 | **ERP: ERPNext Pull** | HTTPS REST API | `ERPNEXT_API_KEY` + `ERPNEXT_API_SECRET` token authentication | `src/lib/adapters/erp/erpNextAdapter.ts` |
 | **ERP: ERPNext Webhook** | HTTPS POST Inbound | `X-Frappe-Webhook-Signature` (HMAC-SHA256 of raw body) | `src/app/api/erp/webhook/erpnext/route.ts` |
 | **Messaging: Email** | SMTP / Console Mock | SMTP credentials or mock mode (`EMAIL_MODE=mock`) | `src/lib/adapters/messaging/emailAdapter.ts` |
 | **Messaging: Evolra Chat** | HTTPS REST / Webhook | `EVOLRA_API_KEY` (outbound) / `EVOLRA_WEBHOOK_SECRET` (inbound) | `src/lib/adapters/messaging/evolraChatAdapter.ts`, `src/app/api/webhooks/evolra/route.ts` |
+
 
 ---
 

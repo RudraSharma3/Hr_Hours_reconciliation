@@ -124,6 +124,20 @@ export default function SettingsClient() {
         </div>
       ))}
 
+      <div className="card p-5 mb-6 space-y-3 bg-slate-50 border-slate-200">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🤖</span>
+          <h2 className="text-sm font-semibold text-slate-900">Google Chat Bot Integration</h2>
+        </div>
+        <p className="text-xs text-slate-600">
+          When <code>MESSAGING_CHANNEL=google_chat</code> is set in <code>.env</code>, timesheet confirmation requests are dispatched directly to employees as interactive <b>Google Chat Cards (v2)</b>.
+        </p>
+        <div className="bg-white p-3 rounded border border-slate-200 text-xs font-mono text-slate-700 space-y-1">
+          <div><span className="text-slate-400 font-sans">Interactive Endpoint URL:</span> <code>/api/chat/google</code></div>
+          <div><span className="text-slate-400 font-sans">Supported Events:</span> <code>CARD_CLICKED</code> (Form Submit), <code>MESSAGE</code> (Query &quot;pending&quot; / &quot;status&quot;), <code>ADDED_TO_SPACE</code></div>
+        </div>
+      </div>
+
       <div className="flex items-center gap-3">
         <button className="btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? 'Saving...' : 'Save settings'}
@@ -133,3 +147,4 @@ export default function SettingsClient() {
     </div>
   );
 }
+
