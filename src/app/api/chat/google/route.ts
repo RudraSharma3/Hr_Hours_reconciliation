@@ -280,6 +280,7 @@ async function handleCardClick(event: any, isAddon: boolean) {
       confirmedHours,
       explanation,
       isCorrection,
+      skipOutboundNotification: true,
     });
   } catch (err) {
     // eslint-disable-next-line no-console
