@@ -4,6 +4,8 @@ import { getCurrentAdmin } from '@/lib/auth/admin';
 import type { Prisma } from '@prisma/client';
 import type { ReconciliationStatus } from '@/lib/statusTypes';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   const admin = await getCurrentAdmin();
   if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

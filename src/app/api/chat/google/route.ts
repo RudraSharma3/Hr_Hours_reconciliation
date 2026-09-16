@@ -8,6 +8,8 @@ import {
   buildHelpCard,
 } from '@/lib/adapters/messaging/googleChatAdapter';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Inbound Google Chat App Webhook handler.
  *

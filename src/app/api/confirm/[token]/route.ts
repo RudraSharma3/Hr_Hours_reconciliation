@@ -4,6 +4,8 @@ import { lookupConfirmationToken, markTokenUsed } from '@/lib/tokens';
 import { submitEmployeeConfirmation } from '@/lib/reconciliationService';
 import { z } from 'zod';
 
+export const dynamic = 'force-dynamic';
+
 // GET: resolve a token to the (limited) reconciliation details needed to
 // render the confirmation form. Never exposes other employees' data — the
 // token is bound 1:1 to a single reconciliation record.

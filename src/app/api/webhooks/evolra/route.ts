@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { submitEmployeeConfirmation } from '@/lib/reconciliationService';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Inbound webhook Evolra should call when an employee replies to a
  * confirmation request sent via EvolraChatAdapter.

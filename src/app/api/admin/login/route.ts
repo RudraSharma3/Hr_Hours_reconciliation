@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { authenticateAdmin, signSession, sessionCookieOptions } from '@/lib/auth/admin';
 
+export const dynamic = 'force-dynamic';
+
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(1),

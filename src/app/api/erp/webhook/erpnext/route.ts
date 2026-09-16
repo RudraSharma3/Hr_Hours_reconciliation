@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { importFromErpNext } from '@/lib/erpImportService';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Real-time ERPNext integration, driven by ERPNext's own built-in
  * "Webhook" doctype (Settings > Webhook in ERPNext) rather than any custom
