@@ -157,9 +157,9 @@ export async function POST(req: NextRequest) {
  * Dual-format response wrapper supporting both standard Chat API and Google Workspace Add-ons.
  */
 function formatChatResponse(payload: any, isAddon: boolean) {
+  const { actionResponse, ...cleanPayload } = payload;
+
   if (isAddon) {
-    // Strip actionResponse so message contains only valid Message schema
-    const { actionResponse, ...cleanPayload } = payload;
     return {
       hostAppDataAction: {
         chatDataAction: {
@@ -171,7 +171,10 @@ function formatChatResponse(payload: any, isAddon: boolean) {
     };
   }
 
-  return payload;
+  return {
+    actionResponse: actionResponse ?? { type: 'NEW_MESSAGE' },
+    ...cleanPayload,
+  };
 }
 
 
@@ -213,6 +216,20 @@ async function handleCardClick(event: any, isAddon: boolean) {
     return NextResponse.json(errorResp);
   }
 
+  // Fetch target reconciliation record
+  const record = await prisma.reconciliationRecord.findUnique({
+    where: { id: recordId },
+    include: { employee: true, project: true },
+  });
+
+  if (!record) {
+    const notFoundResp = formatChatResponse(
+      { text: '⚠️ Reconciliation record not found or already archived. Please type *pending* to refresh your timesheet list.' },
+      isAddon
+    );
+    return NextResponse.json(notFoundResp);
+  }
+
   // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat common.formInputs & action.formInputs)
   const formInputs =
     event.commonEventObject?.formInputs ??
@@ -222,7 +239,7 @@ async function handleCardClick(event: any, isAddon: boolean) {
     event.formInputs ??
     {};
 
-  const inputFieldName = paramsMap.inputFieldName ?? 'confirmedHours';
+  const inputFieldName = paramsMap.inputFieldName ?? `confirmedHours_${record.id}`;
 
   // Helper to extract string from diverse form input shapes
   const extractVal = (obj: any): string => {
@@ -241,53 +258,33 @@ async function handleCardClick(event: any, isAddon: boolean) {
     hoursRaw = extractVal(formInputs.confirmedHours);
   }
 
-  // If hoursRaw is still empty, scan all formInputs for any numeric input
-  if (!hoursRaw && typeof formInputs === 'object') {
-    for (const key of Object.keys(formInputs)) {
-      const candidate = extractVal(formInputs[key]);
-      if (candidate && !isNaN(parseFloat(candidate))) {
-        hoursRaw = candidate;
-        break;
-      }
+  // If user clicked confirm with an empty box, default to confirming their erpHours
+  let confirmedHours = record.erpHours;
+  if (hoursRaw && hoursRaw.trim() !== '') {
+    const parsed = parseFloat(hoursRaw.trim());
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
+      confirmedHours = parsed;
     }
   }
 
   const rawExplanation = extractVal(formInputs.explanation);
   const explanation = rawExplanation.trim() ? rawExplanation.trim() : undefined;
 
-  const confirmedHours = parseFloat(hoursRaw);
-  if (isNaN(confirmedHours) || confirmedHours < 0 || confirmedHours > 1000) {
-    const invalidHoursResp = formatChatResponse(
-      { text: '⚠️ Please enter a valid number of hours (e.g. 76 or 40.5).' },
-      isAddon
-    );
-    return NextResponse.json(invalidHoursResp);
-  }
-
-  // Fetch target reconciliation record
-  const record = await prisma.reconciliationRecord.findUnique({
-    where: { id: recordId },
-    include: { employee: true, project: true },
-  });
-
-  if (!record) {
-    const notFoundResp = formatChatResponse(
-      { text: '⚠️ Reconciliation record not found or already archived.' },
-      isAddon
-    );
-    return NextResponse.json(notFoundResp);
-  }
-
   const isCorrection =
     record.status === 'CORRECTION_REQUESTED' || record.status === 'FLAGGED';
 
   // Execute reconciliation submission & zero-tolerance matching rule
-  await submitEmployeeConfirmation({
-    recordId: record.id,
-    confirmedHours,
-    explanation,
-    isCorrection,
-  });
+  try {
+    await submitEmployeeConfirmation({
+      recordId: record.id,
+      confirmedHours,
+      explanation,
+      isCorrection,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Error in submitEmployeeConfirmation:', err);
+  }
 
   // Re-fetch updated record to render appropriate instant response card
   const updated = await prisma.reconciliationRecord.findUniqueOrThrow({
@@ -339,7 +336,7 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     );
   }
 
-  // 1. If user explicitly queried a specific employee (e.g. "pending Prerna")
+  // 1. If user explicitly queried a specific employee (e.g. "pending Prerna" or "pending Byte019")
   const targetQuery = text.replace(/^pending\s*/i, '').replace(/^status\s*/i, '').trim();
   let employee = null;
 
@@ -355,105 +352,63 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     });
   }
 
-  // 2. Otherwise, find employee by their Google Chat email
+  // 2. Otherwise, find employee by their Google Chat email OR by displayName
   if (!employee && userEmail) {
-    employee = await prisma.employee.findUnique({
-      where: { email: userEmail },
+    employee = await prisma.employee.findFirst({
+      where: {
+        OR: [
+          { email: { equals: userEmail, mode: 'insensitive' } },
+          ...(userName && userName !== 'Employee'
+            ? [{ name: { equals: userName, mode: 'insensitive' } }]
+            : []),
+        ],
+      },
     });
   }
 
-  // 3. Try finding employee by Google Chat displayName
   if (!employee && userName && userName !== 'Employee') {
     employee = await prisma.employee.findFirst({
       where: { name: { contains: userName, mode: 'insensitive' } },
     });
   }
 
-  if (!employee) {
-    return NextResponse.json(
-      formatChatResponse(
-        {
-          text: `Hello ${userName}! No employee profile was found matching your account (${userEmail ?? userName}). Please make sure your timesheets have been imported.`,
-          ...buildHelpCard(),
-        },
-        isAddon
-      )
-    );
-  }
+  // Find pending records across employee ID, name, or email to capture all matches
+  const pendingRecords = await prisma.reconciliationRecord.findMany({
+    where: {
+      OR: [
+        ...(employee ? [{ employeeId: employee.id }] : []),
+        ...(employee ? [{ employee: { name: { equals: employee.name, mode: 'insensitive' } } }] : []),
+        ...(userEmail ? [{ employee: { email: { equals: userEmail, mode: 'insensitive' } } }] : []),
+        ...(userName && userName !== 'Employee'
+          ? [{ employee: { name: { contains: userName, mode: 'insensitive' } } }]
+          : []),
+      ],
+      status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
+    },
+    include: { project: true, employee: true },
+    orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
+  });
 
-  let pendingRecords = [];
-  if (employee) {
-    pendingRecords = await prisma.reconciliationRecord.findMany({
-      where: {
-        employeeId: employee.id,
-        status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
-      },
-      include: { project: true, employee: true },
-      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
-      take: 10,
-    });
-  }
-
-  let isFallback = false;
-  let displayRecords = pendingRecords;
-
-  // If the querying user has 0 personal records, show open records from the imported batch
-  if (displayRecords.length === 0) {
-    const teamRecords = await prisma.reconciliationRecord.findMany({
-      where: {
-        status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
-      },
-      include: { project: true, employee: true },
-      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
-      take: 5,
-    });
-
-    if (teamRecords.length > 0) {
-      displayRecords = teamRecords;
-      isFallback = true;
-    }
-  }
-
-  if (displayRecords.length === 0) {
-    return NextResponse.json(
-      formatChatResponse(
-        {
-          text: `🎉 All caught up! There are 0 pending timesheet reconciliation requests in the system.`,
-          ...buildPendingRequestsCard(employee?.name ?? userName ?? 'Employee', []),
-        },
-        isAddon
-      )
-    );
-  }
-
-  const subtitle = isFallback
-    ? `Company Timesheets (Testing View)`
-    : employee?.name ?? userName ?? 'Employee';
+  const empDisplayName = employee?.name ?? userName ?? 'Employee';
 
   const cardPayload = buildPendingRequestsCard(
-    subtitle,
-    displayRecords.map((r) => ({
+    empDisplayName,
+    pendingRecords.map((r) => ({
       id: r.id,
       projectName: r.project.name,
       month: r.month,
       erpHours: r.erpHours,
       status: r.status,
-      employeeName: isFallback ? r.employee.name : undefined,
     }))
   );
-
-  const headerMsg = isFallback
-    ? `📋 *${employee?.name ?? userName}*: You have 0 personal timesheets in ERPNext. Showing *${displayRecords.length} open team timesheets* from your Dashboard for review & testing:`
-    : `📋 Found ${displayRecords.length} pending timesheets for *${employee?.name ?? userName}*.`;
 
   return NextResponse.json(
     formatChatResponse(
       {
-        text: headerMsg,
+        text: `📋 Found ${pendingRecords.length} pending timesheet(s) for *${empDisplayName}*.`,
         ...cardPayload,
       },
       isAddon
     )
   );
 }
-
