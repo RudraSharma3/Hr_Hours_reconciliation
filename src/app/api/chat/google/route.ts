@@ -339,32 +339,66 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     );
   }
 
-  // 1. Try finding employee by Google Chat email
-  let employee = userEmail
-    ? await prisma.employee.findUnique({
-        where: { email: userEmail },
-      })
-    : null;
+  // 1. Check if user typed a specific employee query (e.g. "pending Prerna" or "status Rohit")
+  const cleanedText = text.replace(/^pending\s*/i, '').replace(/^status\s*/i, '').trim();
+  let employee = null;
 
-  // 2. Try finding employee by displayName if testing
-  if (!employee && userName && userName !== 'Employee') {
-    employee = await prisma.employee.findFirst({
-      where: { name: { contains: userName } },
-    });
-  }
-
-  // 3. Fallback to any employee with pending records for local testing
-  if (!employee) {
+  if (cleanedText && cleanedText !== 'pending' && cleanedText !== 'status') {
     employee = await prisma.employee.findFirst({
       where: {
-        reconciliations: {
-          some: { status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] } },
-        },
+        OR: [
+          { name: { contains: cleanedText, mode: 'insensitive' } },
+          { employeeCode: { contains: cleanedText, mode: 'insensitive' } },
+          { email: { contains: cleanedText, mode: 'insensitive' } },
+        ],
       },
     });
   }
 
-  if (!employee) {
+  // 2. Try finding employee by Google Chat email
+  if (!employee && userEmail) {
+    employee = await prisma.employee.findUnique({
+      where: { email: userEmail },
+    });
+  }
+
+  // 3. Try finding employee by displayName
+  if (!employee && userName && userName !== 'Employee') {
+    employee = await prisma.employee.findFirst({
+      where: { name: { contains: userName, mode: 'insensitive' } },
+    });
+  }
+
+  let pendingRecords = [];
+  if (employee) {
+    pendingRecords = await prisma.reconciliationRecord.findMany({
+      where: {
+        employeeId: employee.id,
+        status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
+      },
+      include: { project: true, employee: true },
+      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
+      take: 10,
+    });
+  }
+
+  // 4. Fallback: If 0 personal records, fetch open pending records from the recent ERPNext import
+  let isFallback = false;
+  if (pendingRecords.length === 0) {
+    pendingRecords = await prisma.reconciliationRecord.findMany({
+      where: {
+        status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
+      },
+      include: { project: true, employee: true },
+      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
+      take: 5,
+    });
+    if (pendingRecords.length > 0) {
+      isFallback = true;
+    }
+  }
+
+  if (pendingRecords.length === 0) {
     return NextResponse.json(
       formatChatResponse(
         {
@@ -376,30 +410,30 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     );
   }
 
-  const pendingRecords = await prisma.reconciliationRecord.findMany({
-    where: {
-      employeeId: employee.id,
-      status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
-    },
-    include: { project: true },
-    orderBy: { month: 'desc' },
-  });
+  const subtitle = isFallback
+    ? `Open Timesheets (ERP Import)`
+    : employee?.name ?? userName ?? 'Employee';
 
   const cardPayload = buildPendingRequestsCard(
-    employee.name,
+    subtitle,
     pendingRecords.map((r) => ({
       id: r.id,
       projectName: r.project.name,
       month: r.month,
       erpHours: r.erpHours,
       status: r.status,
+      employeeName: r.employee.name,
     }))
   );
+
+  const headerMsg = isFallback
+    ? `📋 No personal timesheets for *${userName}* in ERP. Showing *${pendingRecords.length} open imported timesheets*:`
+    : `📋 Found ${pendingRecords.length} pending timesheets for *${employee?.name ?? userName}*.`;
 
   return NextResponse.json(
     formatChatResponse(
       {
-        text: `📋 Found ${pendingRecords.length} pending timesheets for *${employee.name}*.`,
+        text: headerMsg,
         ...cardPayload,
       },
       isAddon
