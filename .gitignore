@@ -3,14 +3,24 @@
 .env.*
 !.env.example
 
+# Next.js build output
+.next/
+out/
+tsconfig.tsbuildinfo
+
 # Dependencies and generated output
 node_modules/
 dist/
 build/
 coverage/
 
+# Local databases
+*.db
+*.db-journal
+
 # Editors and operating systems
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+
