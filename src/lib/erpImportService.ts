@@ -72,13 +72,23 @@ export async function ingestErpEntries(params: {
         },
       });
     } else {
+      const updateData: { employeeCode: string; name: string; email?: string } = {
+        employeeCode: entry.employeeCode,
+        name: entry.employeeName || existingEmp.name,
+      };
+
+      if (entry.employeeEmail && entry.employeeEmail !== existingEmp.email) {
+        const emailConflict = await prisma.employee.findUnique({
+          where: { email: entry.employeeEmail },
+        });
+        if (!emailConflict) {
+          updateData.email = entry.employeeEmail;
+        }
+      }
+
       await prisma.employee.update({
         where: { id: existingEmp.id },
-        data: {
-          employeeCode: entry.employeeCode,
-          name: entry.employeeName || existingEmp.name,
-          ...(entry.employeeEmail ? { email: entry.employeeEmail } : {}),
-        },
+        data: updateData,
       });
     }
 
