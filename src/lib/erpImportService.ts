@@ -2,6 +2,7 @@ import { prisma } from './prisma';
 import { CsvErpAdapter } from './adapters/erp/csvAdapter';
 import { ErpNextAdapter } from './adapters/erp/erpNextAdapter';
 import type { ErpTimesheetEntry } from './adapters/erp/types';
+import { generateReconciliationRequests } from './reconciliationService';
 
 export type IngestResult = {
   batchId: string;
@@ -103,6 +104,17 @@ export async function ingestErpEntries(params: {
         isCurrent: true,
       },
     });
+  }
+
+  // Automatically generate / update reconciliation records for imported months
+  const importedMonths = Array.from(new Set(entries.map((e) => e.month)));
+  for (const m of importedMonths) {
+    try {
+      await generateReconciliationRequests(m);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`Auto-generating reconciliation requests for ${m} warning:`, err);
+    }
   }
 
   return { batchId: batch.id, imported: entries.length, errors };
