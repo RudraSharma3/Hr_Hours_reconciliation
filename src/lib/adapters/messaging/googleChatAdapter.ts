@@ -154,14 +154,12 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
       decoratedText: {
         topLabel: 'Project & Month',
         text: `<b>${ctx.projectName}</b> (${ctx.month})`,
-        startIcon: { knownIcon: 'DESCRIPTION' },
       },
     },
     {
       decoratedText: {
         topLabel: 'ERP Timesheet Hours',
         text: `<b>${ctx.erpHours} hrs</b>`,
-        startIcon: { knownIcon: 'CLOCK' },
       },
     },
   ];
@@ -171,7 +169,6 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
       decoratedText: {
         topLabel: 'Previous Submission',
         text: `You confirmed: <b>${ctx.previousConfirmedHours} hrs</b> (Difference: <b>${ctx.previousDifference ?? 0} hrs</b>)`,
-        startIcon: { knownIcon: 'CONFIRMATION_NUMBER_ICON' },
       },
     });
   }
@@ -199,7 +196,7 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
         textInput: {
           name: 'explanation',
           label: 'Explanation / Notes (optional, or explain difference)',
-          type: 'MULTIPLE_LINE',
+          type: 'SINGLE_LINE',
         },
       },
       {
@@ -274,14 +271,12 @@ export function buildMatchSuccessCard(params: {
                   decoratedText: {
                     topLabel: 'Status',
                     text: '<b>MATCHED (Zero Difference)</b>',
-                    startIcon: { knownIcon: 'STAR' },
                   },
                 },
                 {
                   decoratedText: {
                     topLabel: 'Confirmed & ERP Hours',
                     text: `<b>${params.confirmedHours} hrs</b> (ERP: ${params.erpHours} hrs)`,
-                    startIcon: { knownIcon: 'CLOCK' },
                   },
                 },
                 {
@@ -331,14 +326,12 @@ export function buildMismatchCard(params: {
                   decoratedText: {
                     topLabel: 'Status',
                     text: '<b>FLAGGED (Discrepancy Detected)</b>',
-                    startIcon: { knownIcon: 'DESCRIPTION' },
                   },
                 },
                 {
                   decoratedText: {
                     topLabel: 'Comparison',
                     text: `You confirmed: <b>${params.confirmedHours} hrs</b><br>ERP Timesheet: <b>${params.erpHours} hrs</b><br>Difference: <b>${params.difference} hrs</b>`,
-                    startIcon: { knownIcon: 'CLOCK' },
                   },
                 },
                 ...(params.explanation
@@ -361,17 +354,13 @@ export function buildMismatchCard(params: {
                     name: 'confirmedHours',
                     label: 'Corrected Hours',
                     type: 'SINGLE_LINE',
-                    ...(params.confirmedHours != null
-                      ? { value: String(params.confirmedHours) }
-                      : {}),
                   },
                 },
                 {
                   textInput: {
                     name: 'explanation',
                     label: 'Reason for discrepancy / Correction note',
-                    type: 'MULTIPLE_LINE',
-                    ...(params.explanation ? { value: params.explanation } : {}),
+                    type: 'SINGLE_LINE',
                   },
                 },
                 {
