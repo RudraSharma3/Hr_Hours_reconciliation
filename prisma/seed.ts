@@ -34,6 +34,7 @@ async function main() {
     { employeeCode: 'EMP-1002', name: 'Neha Rao', email: 'neha.rao@example.com' },
     { employeeCode: 'EMP-1003', name: 'Priya Menon', email: 'priya.menon@example.com' },
     { employeeCode: 'EMP-1004', name: 'Rohan Gupta', email: 'rohan.gupta@example.com' },
+    { employeeCode: 'EMP-1005', name: 'Rudra Sharma', email: 'rudra@bytepx.com' },
   ];
 
   const employees: Record<string, Awaited<ReturnType<typeof prisma.employee.upsert>>> = {};
@@ -49,6 +50,8 @@ async function main() {
   const projectsData = [
     { projectCode: 'PRJ-APOLLO', name: 'Apollo' },
     { projectCode: 'PRJ-ZEUS', name: 'Zeus' },
+    { projectCode: 'PRJ-HOLIDAY', name: 'National Holiday' },
+    { projectCode: 'PRJ-LEARNING', name: 'Learning Phase' },
   ];
 
   const projects: Record<string, Awaited<ReturnType<typeof prisma.project.upsert>>> = {};
@@ -327,6 +330,43 @@ async function main() {
         details: JSON.stringify({ escalatedTo: 'hr-escalations@example.com' }),
       },
     ],
+  });
+
+  // Sample 5: Rudra Sharma — pending records for Google Chat verification
+  await prisma.reconciliationRecord.upsert({
+    where: {
+      employeeId_projectId_month: {
+        employeeId: employees['EMP-1005'].id,
+        projectId: projects['PRJ-HOLIDAY'].id,
+        month,
+      },
+    },
+    update: {},
+    create: {
+      month,
+      employeeId: employees['EMP-1005'].id,
+      projectId: projects['PRJ-HOLIDAY'].id,
+      erpHours: 8,
+      status: 'AWAITING_RESPONSE',
+    },
+  });
+
+  await prisma.reconciliationRecord.upsert({
+    where: {
+      employeeId_projectId_month: {
+        employeeId: employees['EMP-1005'].id,
+        projectId: projects['PRJ-LEARNING'].id,
+        month,
+      },
+    },
+    update: {},
+    create: {
+      month,
+      employeeId: employees['EMP-1005'].id,
+      projectId: projects['PRJ-LEARNING'].id,
+      erpHours: 120,
+      status: 'AWAITING_RESPONSE',
+    },
   });
 
   console.log('Seed complete.');
