@@ -339,70 +339,41 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     );
   }
 
-  // 1. Check if user typed a specific employee query (e.g. "pending Prerna" or "status Rohit")
-  const cleanedText = text.replace(/^pending\s*/i, '').replace(/^status\s*/i, '').trim();
+  // 1. If user explicitly queried a specific employee (e.g. "pending Prerna")
+  const targetQuery = text.replace(/^pending\s*/i, '').replace(/^status\s*/i, '').trim();
   let employee = null;
 
-  if (cleanedText && cleanedText !== 'pending' && cleanedText !== 'status') {
+  if (targetQuery && targetQuery !== 'pending' && targetQuery !== 'status') {
     employee = await prisma.employee.findFirst({
       where: {
         OR: [
-          { name: { contains: cleanedText, mode: 'insensitive' } },
-          { employeeCode: { contains: cleanedText, mode: 'insensitive' } },
-          { email: { contains: cleanedText, mode: 'insensitive' } },
+          { name: { contains: targetQuery, mode: 'insensitive' } },
+          { employeeCode: { contains: targetQuery, mode: 'insensitive' } },
+          { email: { contains: targetQuery, mode: 'insensitive' } },
         ],
       },
     });
   }
 
-  // 2. Try finding employee by Google Chat email
+  // 2. Otherwise, find employee by their Google Chat email
   if (!employee && userEmail) {
     employee = await prisma.employee.findUnique({
       where: { email: userEmail },
     });
   }
 
-  // 3. Try finding employee by displayName
+  // 3. Try finding employee by Google Chat displayName
   if (!employee && userName && userName !== 'Employee') {
     employee = await prisma.employee.findFirst({
       where: { name: { contains: userName, mode: 'insensitive' } },
     });
   }
 
-  let pendingRecords = [];
-  if (employee) {
-    pendingRecords = await prisma.reconciliationRecord.findMany({
-      where: {
-        employeeId: employee.id,
-        status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
-      },
-      include: { project: true, employee: true },
-      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
-      take: 10,
-    });
-  }
-
-  // 4. Fallback: If 0 personal records, fetch open pending records from the recent ERPNext import
-  let isFallback = false;
-  if (pendingRecords.length === 0) {
-    pendingRecords = await prisma.reconciliationRecord.findMany({
-      where: {
-        status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
-      },
-      include: { project: true, employee: true },
-      orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
-      take: 5,
-    });
-    if (pendingRecords.length > 0) {
-      isFallback = true;
-    }
-  }
-
-  if (pendingRecords.length === 0) {
+  if (!employee) {
     return NextResponse.json(
       formatChatResponse(
         {
-          text: `Hello ${userName}! No pending timesheet reconciliation records were found in the database.`,
+          text: `Hello ${userName}! No employee profile was found matching your account (${userEmail ?? userName}). Please make sure your timesheets have been imported.`,
           ...buildHelpCard(),
         },
         isAddon
@@ -410,30 +381,30 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     );
   }
 
-  const subtitle = isFallback
-    ? `Open Timesheets (ERP Import)`
-    : employee?.name ?? userName ?? 'Employee';
+  const pendingRecords = await prisma.reconciliationRecord.findMany({
+    where: {
+      employeeId: employee.id,
+      status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
+    },
+    include: { project: true, employee: true },
+    orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
+  });
 
   const cardPayload = buildPendingRequestsCard(
-    subtitle,
+    employee.name,
     pendingRecords.map((r) => ({
       id: r.id,
       projectName: r.project.name,
       month: r.month,
       erpHours: r.erpHours,
       status: r.status,
-      employeeName: r.employee.name,
     }))
   );
-
-  const headerMsg = isFallback
-    ? `📋 No personal timesheets for *${userName}* in ERP. Showing *${pendingRecords.length} open imported timesheets*:`
-    : `📋 Found ${pendingRecords.length} pending timesheets for *${employee?.name ?? userName}*.`;
 
   return NextResponse.json(
     formatChatResponse(
       {
-        text: headerMsg,
+        text: `📋 Found ${pendingRecords.length} pending timesheets for *${employee.name}*.`,
         ...cardPayload,
       },
       isAddon
