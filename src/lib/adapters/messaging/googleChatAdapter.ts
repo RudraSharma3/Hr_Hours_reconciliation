@@ -244,6 +244,9 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
 /**
  * Returns an instant Card v2 response when employee confirms hours and it matches.
  */
+/**
+ * Returns an instant Card v2 response when employee confirms hours and it matches.
+ */
 export function buildMatchSuccessCard(params: {
   employeeName: string;
   projectName: string;
@@ -258,7 +261,7 @@ export function buildMatchSuccessCard(params: {
     },
     cardsV2: [
       {
-        cardId: 'reconciliation-success',
+        cardId: `reconciliation-success-${Date.now()}`,
         card: {
           header: {
             title: '✅ Timesheet Reconciled Successfully',
@@ -266,6 +269,7 @@ export function buildMatchSuccessCard(params: {
           },
           sections: [
             {
+              header: 'Reconciliation Details',
               widgets: [
                 {
                   decoratedText: {
@@ -313,7 +317,7 @@ export function buildMismatchCard(params: {
     },
     cardsV2: [
       {
-        cardId: `reconciliation-mismatch-${params.recordId}`,
+        cardId: `reconciliation-mismatch-${params.recordId}-${Date.now()}`,
         card: {
           header: {
             title: '⚠️ Hours Difference Flagged',
@@ -321,6 +325,7 @@ export function buildMismatchCard(params: {
           },
           sections: [
             {
+              header: 'Discrepancy Details',
               widgets: [
                 {
                   decoratedText: {

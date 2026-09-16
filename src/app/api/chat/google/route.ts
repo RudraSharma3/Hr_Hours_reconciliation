@@ -155,25 +155,23 @@ export async function POST(req: NextRequest) {
 
 /**
  * Dual-format response wrapper supporting both standard Chat API and Google Workspace Add-ons.
+ * Returns both top-level fields (for Google Chat API interactive endpoint) and
+ * hostAppDataAction (for Google Workspace Add-on runtime) so all Google Chat interfaces succeed.
  */
-function formatChatResponse(payload: any, isAddon: boolean) {
+function formatChatResponse(payload: any, isAddon: boolean = false) {
   const { actionResponse, ...cleanPayload } = payload;
-
-  if (isAddon) {
-    return {
-      hostAppDataAction: {
-        chatDataAction: {
-          createMessageAction: {
-            message: cleanPayload,
-          },
-        },
-      },
-    };
-  }
+  const actResp = actionResponse ?? { type: 'NEW_MESSAGE' };
 
   return {
-    actionResponse: actionResponse ?? { type: 'NEW_MESSAGE' },
+    actionResponse: actResp,
     ...cleanPayload,
+    hostAppDataAction: {
+      chatDataAction: {
+        createMessageAction: {
+          message: cleanPayload,
+        },
+      },
+    },
   };
 }
 
@@ -256,6 +254,17 @@ async function handleCardClick(event: any, isAddon: boolean) {
   let hoursRaw = extractVal(formInputs[inputFieldName]);
   if (!hoursRaw && formInputs.confirmedHours) {
     hoursRaw = extractVal(formInputs.confirmedHours);
+  }
+  if (!hoursRaw) {
+    for (const [k, v] of Object.entries(formInputs)) {
+      if (k.toLowerCase().includes('confirmedhours')) {
+        const candidate = extractVal(v);
+        if (candidate) {
+          hoursRaw = candidate;
+          break;
+        }
+      }
+    }
   }
 
   // If user clicked confirm with an empty box, default to confirming their erpHours
