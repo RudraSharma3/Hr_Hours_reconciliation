@@ -162,8 +162,9 @@ export async function submitEmployeeConfirmation(params: {
   confirmedHours: number;
   explanation?: string;
   isCorrection: boolean;
+  skipOutboundNotification?: boolean;
 }): Promise<void> {
-  const { recordId, confirmedHours, explanation, isCorrection } = params;
+  const { recordId, confirmedHours, explanation, isCorrection, skipOutboundNotification } = params;
 
   const record = await prisma.reconciliationRecord.findUniqueOrThrow({
     where: { id: recordId },
@@ -200,8 +201,13 @@ export async function submitEmployeeConfirmation(params: {
     explanation: explanation ?? null,
   });
 
-  if (match.result === 1) {
-    // Step 7: matched -> no further action.
+  if (match.result === 1 || skipOutboundNotification) {
+    if (match.result !== 1) {
+      await prisma.reconciliationRecord.update({
+        where: { id: recordId },
+        data: { status: 'CORRECTION_REQUESTED' },
+      });
+    }
     return;
   }
 
