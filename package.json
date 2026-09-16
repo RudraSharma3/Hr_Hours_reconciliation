@@ -16,8 +16,10 @@
     "job:pull-erpnext": "tsx scripts/run-job.ts pullErpNext",
     "job:generate-requests": "tsx scripts/run-job.ts generateRequests",
     "job:send-reminders": "tsx scripts/run-job.ts sendReminders",
-    "job:escalate": "tsx scripts/run-job.ts escalate"
+    "job:escalate": "tsx scripts/run-job.ts escalate",
+    "sim:chat": "tsx scripts/simulate-chat-bot.ts"
   },
+
   "dependencies": {
     "@prisma/client": "5.19.1",
     "bcryptjs": "2.4.3",

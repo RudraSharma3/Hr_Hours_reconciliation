@@ -37,6 +37,7 @@ graph TD
         ReconAPI["/api/reconciliation, [id], export, generate"]
         ErpAPI["/api/erp/import, sync-erpnext"]
         ConfirmAPI["/api/confirm/[token]"]
+        GoogleChatAPI["/api/chat/google"]
         SettingsAPI["/api/settings"]
         CronAPI["/api/cron/generate-requests, send-reminders, escalate, pull-erpnext"]
         ERPWebhookAPI["/api/erp/webhook/erpnext"]
@@ -62,6 +63,7 @@ graph TD
 
         MsgAdapterFactory["adapters/messaging/index.ts"]
         EmailAdapter["adapters/messaging/emailAdapter.ts"]
+        GoogleChatAdapter["adapters/messaging/googleChatAdapter.ts"]
         EvolraChatAdapter["adapters/messaging/evolraChatAdapter.ts"]
     end
 
@@ -93,6 +95,7 @@ graph TD
     ErpAPI --> ErpImportService
     ConfirmAPI --> TokenService
     ConfirmAPI --> ReconService
+    GoogleChatAPI --> ReconService
     CronAPI --> CronAuth
     CronAPI --> ReconService
     CronAPI --> ErpImportService
@@ -113,7 +116,9 @@ graph TD
     ErpNextAdapter --> ErpNextAggregation
 
     MsgAdapterFactory --> EmailAdapter
+    MsgAdapterFactory --> GoogleChatAdapter
     MsgAdapterFactory --> EvolraChatAdapter
+
 
     AuthService --> PrismaClient
     TokenService --> PrismaClient
@@ -378,8 +383,10 @@ Use this table to check downstream impacts before modifying core shared modules:
 | `src/lib/erpImportService.ts` | `/api/erp/import`, `/api/erp/sync-erpnext`, `/api/erp/webhook/erpnext`, `scripts/run-job.ts`, tests | **HIGH** | Data ingestion integrity. Verify `isCurrent` flag toggling and non-destructive historical retention. |
 | `src/middleware.ts` & `src/lib/auth/*` | All protected admin pages, protected `/api/*` endpoints | **HIGH** | Auth & routing. Test valid/invalid JWT cookies, redirect loops, and webhook exemption bypasses. |
 | `src/lib/adapters/erp/*` | `erpImportService.ts`, `tests/erpCsvAdapter.test.ts`, `tests/erpNextAggregation.test.ts` | **MEDIUM** | Ingestion parsers. Verify normalization, per-row error handling, and monthly aggregation math. |
-| `src/lib/adapters/messaging/*` | `reconciliationService.ts` | **MEDIUM** | Notification delivery. Test template placeholder rendering and mock vs SMTP/Evolra transport. |
+| `src/lib/adapters/messaging/*` | `reconciliationService.ts` | **MEDIUM** | Notification delivery. Test template placeholder rendering and mock vs SMTP/Google Chat/Evolra transport. |
+| `src/lib/adapters/messaging/googleChatAdapter.ts` | `/api/chat/google`, `reconciliationService.ts`, tests | **MEDIUM** | Interactive Google Chat Cards v2 generation and event handling. Run unit tests in `tests/googleChatAdapter.test.ts`. |
 | `src/components/AdminShell.tsx` | All admin page views (`dashboard`, `reconciliation`, `erp-import`, `settings`) | **LOW** | Presentation frame. Test sidebar responsiveness, active route styling, and logout flow. |
 | `src/components/StatusBadge.tsx` | `ReconciliationTableClient`, `RecordDetailClient` | **LOW** | Visual styling. Check badge color mapping across all 6 `ReconciliationStatus` values. |
 | `src/lib/csvExport.ts` | `/api/reconciliation/export`, `tests/csvExport.test.ts` | **LOW** | Export formatting. Verify CSV headers and delimiter escaping. |
+
 
