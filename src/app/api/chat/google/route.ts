@@ -126,13 +126,10 @@ export async function POST(req: NextRequest) {
   try {
     // 1. ADDED_TO_SPACE Event: Onboarding card
     if (eventType === 'ADDED_TO_SPACE') {
-      const resp = formatChatResponse(
-        {
-          text: '🤖 *Welcome to the Hours Reconciliation Bot!*\n\nType *pending* to view and confirm your open timesheets.\nType *help* for more information.',
-          ...buildHelpCard(),
-        },
-        { isCardAction: false }
-      );
+      const resp = formatChatResponse({
+        text: '🤖 *Welcome to the Hours Reconciliation Bot!*\n\nType *pending* to view and confirm your open timesheets.\nType *help* for more information.',
+        ...buildHelpCard(),
+      });
       // eslint-disable-next-line no-console
       console.log('Responding ADDED_TO_SPACE:', JSON.stringify(resp, null, 2));
       return NextResponse.json(resp);
@@ -153,36 +150,35 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line no-console
     console.error('Unhandled error processing Google Chat event:', err);
     return NextResponse.json(
-      formatChatResponse(
-        { text: `⚠️ Error processing request: ${err instanceof Error ? err.message : String(err)}` },
-        { isCardAction: eventType === 'CARD_CLICKED' }
-      )
+      formatChatResponse({
+        text: `⚠️ Error processing request: ${err instanceof Error ? err.message : String(err)}`,
+      })
     );
   }
 }
 
 /**
- * Standard Google Chat API HTTP interactive endpoint response formatter:
- * - On CARD_CLICKED (button click): returns { actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2 }
- * - On MESSAGE / ADDED_TO_SPACE: returns pure Google Chat Message resource { text, cardsV2 }
+ * Google Workspace Add-on response formatter for Google Chat.
+ * When a Chat app is registered as a Workspace add-on (as configured in Google Cloud Console),
+ * Google Chat runtime requires all responses (messages, cards, and card clicks)
+ * to be wrapped in the hostAppDataAction.chatDataAction.createMessageAction envelope.
  */
-function formatChatResponse(
-  payload: any,
-  options: { isCardAction?: boolean } = {}
-) {
-  const { actionResponse, ...cleanPayload } = payload;
-  const isCardAction = options.isCardAction ?? false;
+function formatChatResponse(payload: any) {
+  const { actionResponse, hostAppDataAction, ...cleanPayload } = payload;
 
-  if (isCardAction) {
-    const actResp = actionResponse ?? { type: 'NEW_MESSAGE' };
-    return {
-      actionResponse: actResp,
-      ...cleanPayload,
-    };
-  }
+  const responseMessage = {
+    ...(cleanPayload.text ? { text: cleanPayload.text } : {}),
+    ...(cleanPayload.cardsV2 ? { cardsV2: cleanPayload.cardsV2 } : {}),
+  };
 
   return {
-    ...cleanPayload,
+    hostAppDataAction: {
+      chatDataAction: {
+        createMessageAction: {
+          message: responseMessage,
+        },
+      },
+    },
   };
 }
 
@@ -216,10 +212,9 @@ async function handleCardClick(event: any) {
 
   const recordId = paramsMap.reconciliationRecordId;
   if (!recordId) {
-    const errorResp = formatChatResponse(
-      { text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.' },
-      { isCardAction: true }
-    );
+    const errorResp = formatChatResponse({
+      text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.',
+    });
     // eslint-disable-next-line no-console
     console.warn('handleCardClick: missing recordId. Response:', JSON.stringify(errorResp, null, 2));
     return NextResponse.json(errorResp);
@@ -232,10 +227,9 @@ async function handleCardClick(event: any) {
   });
 
   if (!record) {
-    const notFoundResp = formatChatResponse(
-      { text: '⚠️ Reconciliation record not found or already archived. Please type *pending* to refresh your timesheet list.' },
-      { isCardAction: true }
-    );
+    const notFoundResp = formatChatResponse({
+      text: '⚠️ Reconciliation record not found or already archived. Please type *pending* to refresh your timesheet list.',
+    });
     return NextResponse.json(notFoundResp);
   }
 
@@ -335,7 +329,7 @@ async function handleCardClick(event: any) {
     });
   }
 
-  const formatted = formatChatResponse(cardPayload, { isCardAction: true });
+  const formatted = formatChatResponse(cardPayload);
   // eslint-disable-next-line no-console
   console.log(`[handleCardClick] Responding for record ${recordId} (${updated.status}):\n`, JSON.stringify(formatted, null, 2));
   return NextResponse.json(formatted);
@@ -347,13 +341,10 @@ async function handleCardClick(event: any) {
 async function handleChatMessage(text: string, userEmail?: string, userName?: string) {
   if (text.includes('help') || text === 'hi' || text === 'hello' || !text) {
     return NextResponse.json(
-      formatChatResponse(
-        {
-          text: `🤖 *Timesheet Reconciliation Bot*\n\nHello ${userName}! Here are your available commands:\n• Type *pending* to view and confirm your open monthly timesheet reconciliation requests.\n• Type *status* to check your current reconciliation status.\n\n_Zero-tolerance rule: If your confirmed hours differ from ERP, please provide an explanation._`,
-          ...buildHelpCard(),
-        },
-        { isCardAction: false }
-      )
+      formatChatResponse({
+        text: `🤖 *Timesheet Reconciliation Bot*\n\nHello ${userName}! Here are your available commands:\n• Type *pending* to view and confirm your open monthly timesheet reconciliation requests.\n• Type *status* to check your current reconciliation status.\n\n_Zero-tolerance rule: If your confirmed hours differ from ERP, please provide an explanation._`,
+        ...buildHelpCard(),
+      })
     );
   }
 
@@ -372,12 +363,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     if (!isAdmin) {
       // Non-admin attempting to query someone else -> strictly block
       return NextResponse.json(
-        formatChatResponse(
-          {
-            text: `🔒 *Access Restricted*\n\nYou can only view and reconcile your own timesheets. Querying other employees' records is restricted to administrators.\n\nType *pending* to view your own timesheet requests.`,
-          },
-          { isCardAction: false }
-        )
+        formatChatResponse({
+          text: `🔒 *Access Restricted*\n\nYou can only view and reconcile your own timesheets. Querying other employees' records is restricted to administrators.\n\nType *pending* to view your own timesheet requests.`,
+        })
       );
     }
 
@@ -395,12 +383,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
 
     if (targetEmps.length === 0) {
       return NextResponse.json(
-        formatChatResponse(
-          {
-            text: `🔍 No employee found matching query: *${targetQuery}*.`,
-          },
-          { isCardAction: false }
-        )
+        formatChatResponse({
+          text: `🔍 No employee found matching query: *${targetQuery}*.`,
+        })
       );
     }
 
@@ -422,13 +407,10 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
 
     if (myEmps.length === 0) {
       return NextResponse.json(
-        formatChatResponse(
-          {
-            text: `⚠️ No timesheet profile found for *${userName}* (${userEmail || 'unknown email'}).\n\nPlease ensure your email or name matches your ERP timesheet profile.`,
-            ...buildPendingRequestsCard(userName ?? 'Employee', []),
-          },
-          { isCardAction: false }
-        )
+        formatChatResponse({
+          text: `⚠️ No timesheet profile found for *${userName}* (${userEmail || 'unknown email'}).\n\nPlease ensure your email or name matches your ERP timesheet profile.`,
+          ...buildPendingRequestsCard(userName ?? 'Employee', []),
+        })
       );
     }
 
@@ -458,12 +440,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
   );
 
   return NextResponse.json(
-    formatChatResponse(
-      {
-        text: `📋 Found ${pendingRecords.length} pending timesheet(s) for *${empDisplayName}*.`,
-        ...cardPayload,
-      },
-      { isCardAction: false }
-    )
+    formatChatResponse({
+      text: `📋 Found ${pendingRecords.length} pending timesheet(s) for *${empDisplayName}*.`,
+      ...cardPayload,
+    })
   );
 }
