@@ -28,19 +28,21 @@ Implement an interactive **Google Chat Bot** for employee hours reconciliation, 
 
 ## 4. Current Status & Decisions
 
-- Interactive Google Chat Bot fully implemented, deployed, and live on Vercel production (`origin main` commit `f93ec82`).
-- Root cause of Google Cloud Error `code: 3: Can't post a reply. The Chat app didn't respond or its response was invalid`:
-  1. The bot is configured in Google Cloud Console (`cosmic-kayak-502311-i3`) under **Google Chat API > Configuration** as an **HTTP Endpoint URL** (`https://hr-hours-reconciliation.vercel.app/api/chat/google`).
-  2. Google Chat API's HTTP endpoint validator requires standard REST `Message` (`{ text, cardsV2 }`) on `MESSAGE` and `ADDED_TO_SPACE` events, and `ActionResponse` (`{ actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2 }`) on `CARD_CLICKED` events.
-  3. When Workspace Add-on wrappers (`hostAppDataAction`) or unsupported button properties (`function`) were returned, Google Chat API's validator rejected the payload with error code 3.
-- All endpoints, card builders, and webhook response formatters are strictly aligned with the Google Chat API REST specification.
+- Interactive Google Chat Bot configured and deployed strictly adhering to the **Google Workspace Add-on (`google.apps.card.v1`) specification** (`origin main` commit `1c392ed`).
+- Root cause identified:
+  - App is registered in Google Cloud Console with `Build this Chat app as a Workspace add-on` permanently enabled.
+  - Workspace Add-on runtime (`gcp-sa-gsuiteaddons`) requires all responses (text queries, cards, button submissions) to be wrapped in the `hostAppDataAction.chatDataAction.createMessageAction` envelope.
+  - Buttons strictly use `google.apps.card.v1.Action` with `function: 'submitHoursConfirmation'` and `parameters: [{ key, value }]`.
+- Verified live on Vercel production:
+  - `pending` text query: Returns `200 OK` with strictly `hostAppDataAction` root and interactive timesheet cards.
+  - `Confirm` button submission: Returns `200 OK` with strictly `hostAppDataAction` root and updated verification card (`MATCHED` / `FLAGGED`).
 
 ## 5. Handoff Notes
 
 - Modified Files:
-  - [`src/lib/adapters/messaging/googleChatAdapter.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/lib/adapters/messaging/googleChatAdapter.ts): Strict Cards v2 REST specification with `actionMethodName` and `parameters`.
-  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized `formatChatResponse` returning pure `Message` and `ActionResponse` resources.
-- Verification: Built, committed, and deployed `f93ec82` to Vercel production.
+  - [`src/lib/adapters/messaging/googleChatAdapter.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/lib/adapters/messaging/googleChatAdapter.ts): Configured `google.apps.card.v1.Action` with `function` and `parameters`.
+  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized `formatChatResponse` to strictly return `hostAppDataAction` envelope.
+- Verification: Tested live end-to-end against production Vercel deployment (`https://hr-hours-reconciliation.vercel.app`).
 
 
 
