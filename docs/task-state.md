@@ -28,20 +28,19 @@ Implement an interactive **Google Chat Bot** for employee hours reconciliation, 
 
 ## 4. Current Status & Decisions
 
-- Interactive Google Chat Bot configured and deployed strictly adhering to the **Google Workspace Add-on (`google.apps.card.v1`) specification** (`origin main` commit `1c392ed`).
-- Root cause identified:
-  - App is registered in Google Cloud Console with `Build this Chat app as a Workspace add-on` permanently enabled.
-  - Workspace Add-on runtime (`gcp-sa-gsuiteaddons`) requires all responses (text queries, cards, button submissions) to be wrapped in the `hostAppDataAction.chatDataAction.createMessageAction` envelope.
+- Interactive Google Chat Bot configured and deployed strictly adhering to the **Google Workspace Add-on (`google.apps.card.v1`) specification** (Z Mode, `origin main` commit `c195fe0`).
+- Root cause of button rejection resolved:
+  - In Google Workspace Add-ons, when updating a card message in-place via `updateMessageAction`, the `message` object must contain strictly `cardsV2` without conflicting top-level `text` fields.
   - Buttons strictly use `google.apps.card.v1.Action` with `function: 'submitHoursConfirmation'` and `parameters: [{ key, value }]`.
 - Verified live on Vercel production:
-  - `pending` text query: Returns `200 OK` with strictly `hostAppDataAction` root and interactive timesheet cards.
-  - `Confirm` button submission: Returns `200 OK` with strictly `hostAppDataAction` root and updated verification card (`MATCHED` / `FLAGGED`).
+  - `pending` text query: Returns `200 OK` with `createMessageAction` containing open timesheet cards.
+  - `Confirm` button submission: Returns `200 OK` with clean `updateMessageAction` containing the verified status card.
 
 ## 5. Handoff Notes
 
 - Modified Files:
   - [`src/lib/adapters/messaging/googleChatAdapter.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/lib/adapters/messaging/googleChatAdapter.ts): Configured `google.apps.card.v1.Action` with `function` and `parameters`.
-  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized `formatChatResponse` to strictly return `hostAppDataAction` envelope.
+  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Refined `updateMessageAction` to return clean `cardsV2` payload without conflicting fields.
 - Verification: Tested live end-to-end against production Vercel deployment (`https://hr-hours-reconciliation.vercel.app`).
 
 
