@@ -158,28 +158,43 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Standard Google Chat API HTTP endpoint response formatter:
- * - For CARD_CLICKED (button submissions): Returns { actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2 }.
- * - For MESSAGE & ADDED_TO_SPACE (text messages): Returns pure Message resource { text, cardsV2 } without actionResponse.
+ * Dual-mode Google Chat response formatter supporting both Google Workspace Add-on runtime
+ * (which requires hostAppDataAction.chatDataAction.createMessageAction.message) and standard
+ * Google Chat API HTTP interactive endpoints (which expect root Message / ActionResponse objects).
  */
 function formatChatResponse(
   payload: any,
   options: { isCardAction?: boolean } = {}
 ) {
-  const { actionResponse, ...cleanPayload } = payload;
+  const { actionResponse, hostAppDataAction, ...cleanPayload } = payload;
   const isCardAction = options.isCardAction ?? false;
+
+  const responseMessage = {
+    ...(cleanPayload.text ? { text: cleanPayload.text } : {}),
+    ...(cleanPayload.cardsV2 ? { cardsV2: cleanPayload.cardsV2 } : {}),
+  };
+
+  const addonEnvelope = {
+    chatDataAction: {
+      createMessageAction: {
+        message: responseMessage,
+      },
+    },
+  };
 
   if (isCardAction) {
     const actResp = actionResponse ?? { type: 'NEW_MESSAGE' };
     return {
       actionResponse: actResp,
       ...cleanPayload,
+      hostAppDataAction: addonEnvelope,
     };
   }
 
-  // Pure Message object for MESSAGE and ADDED_TO_SPACE events
+  // Pure Message object for MESSAGE and ADDED_TO_SPACE events + Add-on envelope
   return {
     ...cleanPayload,
+    hostAppDataAction: addonEnvelope,
   };
 }
 
