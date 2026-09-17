@@ -166,22 +166,26 @@ function formatChatResponse(payload: any, options: { isCardAction?: boolean } = 
   const { actionResponse, hostAppDataAction, ...cleanPayload } = payload;
   const isCardAction = options.isCardAction ?? false;
 
-  const responseMessage = {
-    ...(cleanPayload.text ? { text: cleanPayload.text } : {}),
-    ...(cleanPayload.cardsV2 ? { cardsV2: cleanPayload.cardsV2 } : {}),
-  };
-
   if (isCardAction) {
+    const cardUpdateMessage = cleanPayload.cardsV2
+      ? { cardsV2: cleanPayload.cardsV2 }
+      : { text: cleanPayload.text ?? 'Updated successfully.' };
+
     return {
       hostAppDataAction: {
         chatDataAction: {
           updateMessageAction: {
-            message: responseMessage,
+            message: cardUpdateMessage,
           },
         },
       },
     };
   }
+
+  const responseMessage = {
+    ...(cleanPayload.text ? { text: cleanPayload.text } : {}),
+    ...(cleanPayload.cardsV2 ? { cardsV2: cleanPayload.cardsV2 } : {}),
+  };
 
   return {
     hostAppDataAction: {
