@@ -30,12 +30,11 @@ Implement an interactive **Google Chat Bot** for employee hours reconciliation, 
 
 - Interactive Google Chat Bot fully implemented and integrated with the zero-tolerance reconciliation workflow.
 - Investigated and resolved Google Chat response schema rules:
-  1. `MESSAGE` and `ADDED_TO_SPACE` events strictly require a pure Google Chat `Message` resource (`{ text, cardsV2 }`) with NO top-level `actionResponse` or `hostAppDataAction`.
-  2. `CARD_CLICKED` interactive button clicks strictly require an `ActionResponse` wrapper (`{ actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2 }`).
-  3. Structured `formatChatResponse` with `isCardAction` toggle to guarantee exact schema alignment per event type.
-  4. Fixed missing `header` in `buildMismatchCard` and `buildMatchSuccessCard` sections.
-  5. Added multi-strategy fallback extraction for form input values across `formInputs[name]`, `confirmedHours`, and dynamic field keys.
-- Verified unit tests (`npx vitest run tests/googleChatAdapter.test.ts`) pass 9/9 and Next.js production build (`next build`) compiles cleanly with 0 errors. Deployed to `origin main`.
+  1. `MESSAGE` and `ADDED_TO_SPACE` events return top-level `text` + `cardsV2` (without `actionResponse`) AND `hostAppDataAction`.
+  2. `CARD_CLICKED` interactive button clicks return top-level `actionResponse: { type: 'NEW_MESSAGE' }`, `text`, `cardsV2` AND `hostAppDataAction`.
+  3. Added `mode=reopen` to `/api/admin/reset-data` to easily reset all records to `AWAITING_RESPONSE`.
+  4. Verified all 88 live records reset to clean state and live endpoints verified with HTTP 200 OK.
+- Deployed to production (`origin main` commit `794fe40`).
 
 ## 5. Handoff Notes
 
