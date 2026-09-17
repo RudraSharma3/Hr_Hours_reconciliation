@@ -158,18 +158,30 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Google Workspace Add-on response formatter for Google Chat.
- * When a Chat app is registered as a Workspace add-on (as configured in Google Cloud Console),
- * Google Chat runtime requires all responses (messages, cards, and card clicks)
- * to be wrapped in the hostAppDataAction.chatDataAction.createMessageAction envelope.
+ * Google Workspace Add-on response formatter for Google Chat (Z Mode).
+ * - On CARD_CLICKED (button click): updates the existing interactive card in place using updateMessageAction.
+ * - On MESSAGE / ADDED_TO_SPACE: posts a new message card to the space using createMessageAction.
  */
-function formatChatResponse(payload: any) {
+function formatChatResponse(payload: any, options: { isCardAction?: boolean } = {}) {
   const { actionResponse, hostAppDataAction, ...cleanPayload } = payload;
+  const isCardAction = options.isCardAction ?? false;
 
   const responseMessage = {
     ...(cleanPayload.text ? { text: cleanPayload.text } : {}),
     ...(cleanPayload.cardsV2 ? { cardsV2: cleanPayload.cardsV2 } : {}),
   };
+
+  if (isCardAction) {
+    return {
+      hostAppDataAction: {
+        chatDataAction: {
+          updateMessageAction: {
+            message: responseMessage,
+          },
+        },
+      },
+    };
+  }
 
   return {
     hostAppDataAction: {
@@ -212,9 +224,10 @@ async function handleCardClick(event: any) {
 
   const recordId = paramsMap.reconciliationRecordId;
   if (!recordId) {
-    const errorResp = formatChatResponse({
-      text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.',
-    });
+    const errorResp = formatChatResponse(
+      { text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.' },
+      { isCardAction: true }
+    );
     // eslint-disable-next-line no-console
     console.warn('handleCardClick: missing recordId. Response:', JSON.stringify(errorResp, null, 2));
     return NextResponse.json(errorResp);
@@ -227,9 +240,10 @@ async function handleCardClick(event: any) {
   });
 
   if (!record) {
-    const notFoundResp = formatChatResponse({
-      text: '⚠️ Reconciliation record not found or already archived. Please type *pending* to refresh your timesheet list.',
-    });
+    const notFoundResp = formatChatResponse(
+      { text: '⚠️ Reconciliation record not found or already archived. Please type *pending* to refresh your timesheet list.' },
+      { isCardAction: true }
+    );
     return NextResponse.json(notFoundResp);
   }
 
@@ -329,7 +343,7 @@ async function handleCardClick(event: any) {
     });
   }
 
-  const formatted = formatChatResponse(cardPayload);
+  const formatted = formatChatResponse(cardPayload, { isCardAction: true });
   // eslint-disable-next-line no-console
   console.log(`[handleCardClick] Responding for record ${recordId} (${updated.status}):\n`, JSON.stringify(formatted, null, 2));
   return NextResponse.json(formatted);
