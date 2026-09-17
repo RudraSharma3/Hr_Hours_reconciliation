@@ -158,9 +158,12 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Dual-format response wrapper supporting both Google Workspace Add-ons and standard Chat API.
- * - If Google Workspace Add-on (isAddon is true): Wraps inside hostAppDataAction.chatDataAction.createMessageAction.
- * - If standard Google Chat API (isAddon is false): Returns ActionResponse for CARD_CLICKED or pure Message for MESSAGE/ADDED_TO_SPACE.
+ * Dual-format response wrapper supporting both Google Chat API HTTP interactive endpoints
+ * and Google Workspace Add-on runtimes simultaneously:
+ * - For CARD_CLICKED: Returns top-level actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2
+ *   AND hostAppDataAction: { chatDataAction: { createMessageAction: { message: cleanPayload } } }.
+ * - For MESSAGE / ADDED_TO_SPACE: Returns top-level text, cardsV2 (NO actionResponse)
+ *   AND hostAppDataAction: { chatDataAction: { createMessageAction: { message: cleanPayload } } }.
  */
 function formatChatResponse(
   payload: any,
@@ -168,10 +171,15 @@ function formatChatResponse(
 ) {
   const { actionResponse, ...cleanPayload } = payload;
   const isCardAction = options.isCardAction ?? false;
-  const isAddon = options.isAddon ?? true;
 
-  if (isAddon) {
+  if (isCardAction) {
+    const actResp = actionResponse ?? { type: 'NEW_MESSAGE' };
     return {
+      // 1. Google Chat API HTTP interactive endpoint schema
+      actionResponse: actResp,
+      ...cleanPayload,
+
+      // 2. Google Workspace Add-on envelope
       hostAppDataAction: {
         chatDataAction: {
           createMessageAction: {
@@ -182,15 +190,16 @@ function formatChatResponse(
     };
   }
 
-  if (isCardAction) {
-    return {
-      actionResponse: actionResponse ?? { type: 'NEW_MESSAGE' },
-      ...cleanPayload,
-    };
-  }
-
+  // Pure Message object for MESSAGE and ADDED_TO_SPACE events + Add-on envelope
   return {
     ...cleanPayload,
+    hostAppDataAction: {
+      chatDataAction: {
+        createMessageAction: {
+          message: cleanPayload,
+        },
+      },
+    },
   };
 }
 
