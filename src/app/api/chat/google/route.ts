@@ -106,12 +106,16 @@ export async function POST(req: NextRequest) {
 
   // 3. Extract Message Text
   const rawText =
-    event.chat?.messagePayload?.message?.text ??
     event.chat?.messagePayload?.message?.argumentText ??
-    event.message?.text ??
     event.message?.argumentText ??
+    event.chat?.messagePayload?.message?.text ??
+    event.message?.text ??
     '';
-  const text = rawText.trim().toLowerCase();
+  const cleanRaw = rawText
+    .replace(/^<users\/[^>]+>\s*/i, '')
+    .replace(/^@[\w\s.-]+\s*/i, '')
+    .trim();
+  const text = (cleanRaw || rawText).trim().toLowerCase();
 
   const isAddon = Boolean(event.commonEventObject || event.chat);
 
@@ -154,9 +158,9 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Dual-format response wrapper supporting both standard Chat API and Google Workspace Add-ons.
- * - For MESSAGE & ADDED_TO_SPACE: Returns a pure Google Chat Message resource ({ text, cardsV2 }).
- * - For CARD_CLICKED (interactive button actions): Returns an ActionResponse wrapper ({ actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2 }).
+ * Dual-format response wrapper supporting both Google Workspace Add-ons and standard Chat API.
+ * - If Google Workspace Add-on (isAddon is true): Wraps inside hostAppDataAction.chatDataAction.createMessageAction.
+ * - If standard Google Chat API (isAddon is false): Returns ActionResponse for CARD_CLICKED or pure Message for MESSAGE/ADDED_TO_SPACE.
  */
 function formatChatResponse(
   payload: any,
@@ -164,27 +168,27 @@ function formatChatResponse(
 ) {
   const { actionResponse, ...cleanPayload } = payload;
   const isCardAction = options.isCardAction ?? false;
+  const isAddon = options.isAddon ?? true;
 
-  if (isCardAction) {
-    const actResp = actionResponse ?? { type: 'NEW_MESSAGE' };
+  if (isAddon) {
     return {
-      actionResponse: actResp,
-      ...cleanPayload,
-      ...(options.isAddon
-        ? {
-            hostAppDataAction: {
-              chatDataAction: {
-                createMessageAction: {
-                  message: cleanPayload,
-                },
-              },
-            },
-          }
-        : {}),
+      hostAppDataAction: {
+        chatDataAction: {
+          createMessageAction: {
+            message: cleanPayload,
+          },
+        },
+      },
     };
   }
 
-  // Pure Message object for MESSAGE and ADDED_TO_SPACE events
+  if (isCardAction) {
+    return {
+      actionResponse: actionResponse ?? { type: 'NEW_MESSAGE' },
+      ...cleanPayload,
+    };
+  }
+
   return {
     ...cleanPayload,
   };
