@@ -28,20 +28,23 @@ Implement an interactive **Google Chat Bot** for employee hours reconciliation, 
 
 ## 4. Current Status & Decisions
 
-- Interactive Google Chat Bot fully implemented, deployed, and verified live on Vercel production (`origin main` commit `2a52af7`).
-- Root cause for Google Chat Error Code 3 (`INVALID_ARGUMENT`) resolved:
-  1. For `MESSAGE` and `ADDED_TO_SPACE` text events, response is formatted as a pure Google Chat API `Message` object (`{ text, cardsV2 }` without top-level `actionResponse`).
-  2. For `CARD_CLICKED` interactive button clicks, response is formatted as a valid Google Chat API `ActionResponse` object (`{ actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2 }`).
-- Verified live end-to-end on Vercel:
-  - `pending` command returns `📋 Pending Timesheets (4)` card list with interactive form fields and action parameters.
-  - Submitting mismatch hours (e.g. 6 hrs vs 8 hrs) returns `⚠️ Hours Difference Flagged` card with 200 OK.
-  - Submitting exact hours (8 hrs vs 8 hrs) returns `✅ Timesheet Reconciled Successfully` card with 200 OK.
+- Interactive Google Chat Bot fully implemented, deployed, and verified live on Vercel production (`origin main` commit `68976da`).
+- Fully resolved Google Workspace Add-on runtime requirements:
+  1. For `MESSAGE`, `ADDED_TO_SPACE`, and `CARD_CLICKED` events, always output the required `hostAppDataAction.chatDataAction.createMessageAction.message` envelope.
+  2. For standard Chat API clients, maintain root `text`, `cardsV2`, and `actionResponse: { type: 'NEW_MESSAGE' }`.
+  3. Added both `function: 'submitHoursConfirmation'` and `actionMethodName: 'submitHoursConfirmation'` across all interactive buttons in `googleChatAdapter.ts`.
+- Verified live against production Vercel deployment:
+  - `pending` command with full Add-on envelope returns 200 OK with `hostAppDataAction`.
+  - `hi` / `help` commands return 200 OK with `hostAppDataAction`.
+  - Button click with mismatch hours returns `⚠️ Hours Difference Flagged` card.
+  - Button click with matching hours returns `✅ Timesheet Reconciled Successfully` card.
 
 ## 5. Handoff Notes
 
 - Modified Files:
-  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized response formatting strictly adhering to Google Chat HTTP endpoint protobuf specifications.
-- Verification: Ran `npm test` (adapter tests passing), `next build` (clean compilation), and live HTTP endpoint tests against production Vercel deployment.
+  - [`src/lib/adapters/messaging/googleChatAdapter.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/lib/adapters/messaging/googleChatAdapter.ts): Added dual `function` and `actionMethodName` handlers.
+  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized dual-mode `formatChatResponse`.
+- Verification: Ran `npm test`, `next build`, and live HTTP simulations against production Vercel.
 
 
 
