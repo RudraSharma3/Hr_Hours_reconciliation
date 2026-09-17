@@ -28,22 +28,19 @@ Implement an interactive **Google Chat Bot** for employee hours reconciliation, 
 
 ## 4. Current Status & Decisions
 
-- Interactive Google Chat Bot fully implemented, deployed, and verified live on Vercel production (`origin main` commit `3778056`).
-- Fully resolved Google Workspace Add-on runtime schema validation:
-  1. For `isAddon: true` (`commonEventObject` / `chat` / `Google-gsuiteaddons` header), root response is strictly `{ hostAppDataAction: { chatDataAction: { createMessageAction: { message } } } }` with zero extraneous root fields.
-  2. For `isAddon: false` (standard Chat API), responses use standard `Message` and `ActionResponse` objects.
-  3. Interactive buttons provide both `function: 'submitHoursConfirmation'` and `actionMethodName: 'submitHoursConfirmation'`.
-- Verified live against production Vercel deployment:
-  - `pending` command returns strictly `[ 'hostAppDataAction' ]` with 200 OK.
-  - `hi` / `help` commands return strictly `[ 'hostAppDataAction' ]` with 200 OK.
-  - Button click returns strictly `[ 'hostAppDataAction' ]` with 200 OK.
+- Interactive Google Chat Bot fully implemented, deployed, and live on Vercel production (`origin main` commit `f93ec82`).
+- Root cause of Google Cloud Error `code: 3: Can't post a reply. The Chat app didn't respond or its response was invalid`:
+  1. The bot is configured in Google Cloud Console (`cosmic-kayak-502311-i3`) under **Google Chat API > Configuration** as an **HTTP Endpoint URL** (`https://hr-hours-reconciliation.vercel.app/api/chat/google`).
+  2. Google Chat API's HTTP endpoint validator requires standard REST `Message` (`{ text, cardsV2 }`) on `MESSAGE` and `ADDED_TO_SPACE` events, and `ActionResponse` (`{ actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2 }`) on `CARD_CLICKED` events.
+  3. When Workspace Add-on wrappers (`hostAppDataAction`) or unsupported button properties (`function`) were returned, Google Chat API's validator rejected the payload with error code 3.
+- All endpoints, card builders, and webhook response formatters are strictly aligned with the Google Chat API REST specification.
 
 ## 5. Handoff Notes
 
 - Modified Files:
-  - [`src/lib/adapters/messaging/googleChatAdapter.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/lib/adapters/messaging/googleChatAdapter.ts): Added dual `function` and `actionMethodName` handlers.
-  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized strict Add-on response formatter.
-- Verification: Ran `npm test`, `next build`, and live HTTP simulations against production Vercel.
+  - [`src/lib/adapters/messaging/googleChatAdapter.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/lib/adapters/messaging/googleChatAdapter.ts): Strict Cards v2 REST specification with `actionMethodName` and `parameters`.
+  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized `formatChatResponse` returning pure `Message` and `ActionResponse` resources.
+- Verification: Built, committed, and deployed `f93ec82` to Vercel production.
 
 
 
