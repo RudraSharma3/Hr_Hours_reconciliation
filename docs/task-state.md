@@ -28,22 +28,21 @@ Implement an interactive **Google Chat Bot** for employee hours reconciliation, 
 
 ## 4. Current Status & Decisions
 
-- Interactive Google Chat Bot fully implemented, deployed, and verified live on Vercel production (`origin main` commit `68976da`).
-- Fully resolved Google Workspace Add-on runtime requirements:
-  1. For `MESSAGE`, `ADDED_TO_SPACE`, and `CARD_CLICKED` events, always output the required `hostAppDataAction.chatDataAction.createMessageAction.message` envelope.
-  2. For standard Chat API clients, maintain root `text`, `cardsV2`, and `actionResponse: { type: 'NEW_MESSAGE' }`.
-  3. Added both `function: 'submitHoursConfirmation'` and `actionMethodName: 'submitHoursConfirmation'` across all interactive buttons in `googleChatAdapter.ts`.
+- Interactive Google Chat Bot fully implemented, deployed, and verified live on Vercel production (`origin main` commit `3778056`).
+- Fully resolved Google Workspace Add-on runtime schema validation:
+  1. For `isAddon: true` (`commonEventObject` / `chat` / `Google-gsuiteaddons` header), root response is strictly `{ hostAppDataAction: { chatDataAction: { createMessageAction: { message } } } }` with zero extraneous root fields.
+  2. For `isAddon: false` (standard Chat API), responses use standard `Message` and `ActionResponse` objects.
+  3. Interactive buttons provide both `function: 'submitHoursConfirmation'` and `actionMethodName: 'submitHoursConfirmation'`.
 - Verified live against production Vercel deployment:
-  - `pending` command with full Add-on envelope returns 200 OK with `hostAppDataAction`.
-  - `hi` / `help` commands return 200 OK with `hostAppDataAction`.
-  - Button click with mismatch hours returns `⚠️ Hours Difference Flagged` card.
-  - Button click with matching hours returns `✅ Timesheet Reconciled Successfully` card.
+  - `pending` command returns strictly `[ 'hostAppDataAction' ]` with 200 OK.
+  - `hi` / `help` commands return strictly `[ 'hostAppDataAction' ]` with 200 OK.
+  - Button click returns strictly `[ 'hostAppDataAction' ]` with 200 OK.
 
 ## 5. Handoff Notes
 
 - Modified Files:
   - [`src/lib/adapters/messaging/googleChatAdapter.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/lib/adapters/messaging/googleChatAdapter.ts): Added dual `function` and `actionMethodName` handlers.
-  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized dual-mode `formatChatResponse`.
+  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Standardized strict Add-on response formatter.
 - Verification: Ran `npm test`, `next build`, and live HTTP simulations against production Vercel.
 
 
