@@ -421,6 +421,7 @@ export function buildPendingRequestsCard(
             },
             sections: [
               {
+                header: 'Status',
                 widgets: [
                   {
                     textParagraph: {
