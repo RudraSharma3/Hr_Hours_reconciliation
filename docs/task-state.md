@@ -29,11 +29,13 @@ Implement an interactive **Google Chat Bot** for employee hours reconciliation, 
 ## 4. Current Status & Decisions
 
 - Interactive Google Chat Bot fully implemented and integrated with the zero-tolerance reconciliation workflow.
-- Investigated and resolved Google Chat "Hours Reconciliation Bot is unable to process your request" root cause:
-  1. Card submission (`CARD_CLICKED`) handler was wrapping the response exclusively inside `hostAppDataAction`, which caused standard Google Chat API HTTP interactive endpoints to discard the response. Updated `formatChatResponse` to provide a dual-format payload containing top-level `actionResponse: { type: 'NEW_MESSAGE' }`, `text`, and `cardsV2` alongside `hostAppDataAction`.
-  2. Fixed missing `header` in `buildMismatchCard` and `buildMatchSuccessCard` sections to strictly adhere to Google Chat Cards v2 schema.
-  3. Added multi-strategy fallback extraction for form input values across `formInputs[name]`, `confirmedHours`, and dynamic field keys.
-- Verified local Next.js production build passes with 0 errors and deployed to `origin main`.
+- Investigated and resolved Google Chat response schema rules:
+  1. `MESSAGE` and `ADDED_TO_SPACE` events strictly require a pure Google Chat `Message` resource (`{ text, cardsV2 }`) with NO top-level `actionResponse` or `hostAppDataAction`.
+  2. `CARD_CLICKED` interactive button clicks strictly require an `ActionResponse` wrapper (`{ actionResponse: { type: 'NEW_MESSAGE' }, text, cardsV2 }`).
+  3. Structured `formatChatResponse` with `isCardAction` toggle to guarantee exact schema alignment per event type.
+  4. Fixed missing `header` in `buildMismatchCard` and `buildMatchSuccessCard` sections.
+  5. Added multi-strategy fallback extraction for form input values across `formInputs[name]`, `confirmedHours`, and dynamic field keys.
+- Verified unit tests (`npx vitest run tests/googleChatAdapter.test.ts`) pass 9/9 and Next.js production build (`next build`) compiles cleanly with 0 errors. Deployed to `origin main`.
 
 ## 5. Handoff Notes
 
