@@ -206,7 +206,6 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
               text: isMismatch ? 'Submit Corrected Hours' : 'Confirm Hours',
               onClick: {
                 action: {
-                  function: 'submitHoursConfirmation',
                   actionMethodName: 'submitHoursConfirmation',
                   parameters: [
                     { key: 'reconciliationRecordId', value: ctx.reconciliationRecordId },
@@ -376,7 +375,6 @@ export function buildMismatchCard(params: {
                         text: 'Update & Re-Submit',
                         onClick: {
                           action: {
-                            function: 'submitHoursConfirmation',
                             actionMethodName: 'submitHoursConfirmation',
                             parameters: [
                               { key: 'reconciliationRecordId', value: params.recordId },
@@ -471,7 +469,6 @@ export function buildPendingRequestsCard(
                       text: 'Confirm',
                       onClick: {
                         action: {
-                          function: 'submitHoursConfirmation',
                           actionMethodName: 'submitHoursConfirmation',
                           parameters: [
                             { key: 'reconciliationRecordId', value: rec.id },
