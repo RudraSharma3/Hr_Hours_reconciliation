@@ -117,7 +117,11 @@ export async function POST(req: NextRequest) {
     .trim();
   const text = (cleanRaw || rawText).trim().toLowerCase();
 
-  const isAddon = Boolean(event.commonEventObject || event.chat);
+  const isAddon = Boolean(
+    event.commonEventObject ||
+    event.chat ||
+    req.headers.get('user-agent')?.includes('Google-gsuiteaddons')
+  );
 
   try {
     // 1. ADDED_TO_SPACE Event: Onboarding card
@@ -127,7 +131,7 @@ export async function POST(req: NextRequest) {
           text: '🤖 *Welcome to the Hours Reconciliation Bot!*\n\nType *pending* to view and confirm your open timesheets.\nType *help* for more information.',
           ...buildHelpCard(),
         },
-        { isCardAction: false }
+        { isCardAction: false, isAddon }
       );
       // eslint-disable-next-line no-console
       console.log('Responding ADDED_TO_SPACE:', JSON.stringify(resp, null, 2));
@@ -136,65 +140,70 @@ export async function POST(req: NextRequest) {
 
     // 2. CARD_CLICKED Event: Interactive card submission
     if (eventType === 'CARD_CLICKED') {
-      return await handleCardClick(event);
+      return await handleCardClick(event, isAddon);
     }
 
     // 3. MESSAGE Event: Direct chat or slash commands
     if (eventType === 'MESSAGE') {
-      return await handleChatMessage(text, userEmail, userName);
+      return await handleChatMessage(text, userEmail, userName, isAddon);
     }
 
-    return NextResponse.json({ text: 'Event received successfully.' });
+    return NextResponse.json(
+      formatChatResponse({ text: 'Event received successfully.' }, { isAddon })
+    );
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Unhandled error processing Google Chat event:', err);
     return NextResponse.json(
       formatChatResponse(
         { text: `⚠️ Error processing request: ${err instanceof Error ? err.message : String(err)}` },
-        { isCardAction: eventType === 'CARD_CLICKED' }
+        { isCardAction: eventType === 'CARD_CLICKED', isAddon }
       )
     );
   }
 }
 
 /**
- * Dual-mode Google Chat response formatter supporting both Google Workspace Add-on runtime
- * (which requires hostAppDataAction.chatDataAction.createMessageAction.message) and standard
- * Google Chat API HTTP interactive endpoints (which expect root Message / ActionResponse objects).
+ * Strict response formatter supporting both Google Workspace Add-on runtime (isAddon: true)
+ * and standard Google Chat API HTTP interactive endpoints (isAddon: false).
  */
 function formatChatResponse(
   payload: any,
-  options: { isCardAction?: boolean } = {}
+  options: { isCardAction?: boolean; isAddon?: boolean } = {}
 ) {
   const { actionResponse, hostAppDataAction, ...cleanPayload } = payload;
   const isCardAction = options.isCardAction ?? false;
+  const isAddon = options.isAddon ?? false;
 
   const responseMessage = {
     ...(cleanPayload.text ? { text: cleanPayload.text } : {}),
     ...(cleanPayload.cardsV2 ? { cardsV2: cleanPayload.cardsV2 } : {}),
   };
 
-  const addonEnvelope = {
-    chatDataAction: {
-      createMessageAction: {
-        message: responseMessage,
+  // Google Workspace Add-on runtime expects strictly hostAppDataAction
+  if (isAddon) {
+    return {
+      hostAppDataAction: {
+        chatDataAction: {
+          createMessageAction: {
+            message: responseMessage,
+          },
+        },
       },
-    },
-  };
+    };
+  }
 
+  // Standard Google Chat API HTTP interactive endpoints
   if (isCardAction) {
     const actResp = actionResponse ?? { type: 'NEW_MESSAGE' };
     return {
       actionResponse: actResp,
       ...cleanPayload,
-      hostAppDataAction: addonEnvelope,
     };
   }
 
-  // Pure Message object for MESSAGE and ADDED_TO_SPACE events + Add-on envelope
   return {
     ...cleanPayload,
-    hostAppDataAction: addonEnvelope,
   };
 }
 
@@ -202,7 +211,7 @@ function formatChatResponse(
 /**
  * Handles interactive Form submit button clicks on Google Chat Cards v2.
  */
-async function handleCardClick(event: any) {
+async function handleCardClick(event: any, isAddon: boolean = false) {
   const paramsMap: Record<string, string> = {};
 
   // 1. Google Workspace Add-on parameters
@@ -230,7 +239,7 @@ async function handleCardClick(event: any) {
   if (!recordId) {
     const errorResp = formatChatResponse(
       { text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.' },
-      { isCardAction: true }
+      { isCardAction: true, isAddon }
     );
     // eslint-disable-next-line no-console
     console.warn('handleCardClick: missing recordId. Response:', JSON.stringify(errorResp, null, 2));
@@ -246,7 +255,7 @@ async function handleCardClick(event: any) {
   if (!record) {
     const notFoundResp = formatChatResponse(
       { text: '⚠️ Reconciliation record not found or already archived. Please type *pending* to refresh your timesheet list.' },
-      { isCardAction: true }
+      { isCardAction: true, isAddon }
     );
     return NextResponse.json(notFoundResp);
   }
@@ -347,7 +356,7 @@ async function handleCardClick(event: any) {
     });
   }
 
-  const formatted = formatChatResponse(cardPayload, { isCardAction: true });
+  const formatted = formatChatResponse(cardPayload, { isCardAction: true, isAddon });
   // eslint-disable-next-line no-console
   console.log(`[handleCardClick] Responding for record ${recordId} (${updated.status}):\n`, JSON.stringify(formatted, null, 2));
   return NextResponse.json(formatted);
@@ -356,7 +365,7 @@ async function handleCardClick(event: any) {
 /**
  * Handles text queries sent to the bot (e.g. "pending", "status", "help").
  */
-async function handleChatMessage(text: string, userEmail?: string, userName?: string) {
+async function handleChatMessage(text: string, userEmail?: string, userName?: string, isAddon: boolean = false) {
   if (text.includes('help') || text === 'hi' || text === 'hello' || !text) {
     return NextResponse.json(
       formatChatResponse(
@@ -364,7 +373,7 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
           text: `🤖 *Timesheet Reconciliation Bot*\n\nHello ${userName}! Here are your available commands:\n• Type *pending* to view and confirm your open monthly timesheet reconciliation requests.\n• Type *status* to check your current reconciliation status.\n\n_Zero-tolerance rule: If your confirmed hours differ from ERP, please provide an explanation._`,
           ...buildHelpCard(),
         },
-        { isCardAction: false }
+        { isCardAction: false, isAddon }
       )
     );
   }
@@ -388,7 +397,7 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
           {
             text: `🔒 *Access Restricted*\n\nYou can only view and reconcile your own timesheets. Querying other employees' records is restricted to administrators.\n\nType *pending* to view your own timesheet requests.`,
           },
-          { isCardAction: false }
+          { isCardAction: false, isAddon }
         )
       );
     }
@@ -411,7 +420,7 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
           {
             text: `🔍 No employee found matching query: *${targetQuery}*.`,
           },
-          { isCardAction: false }
+          { isCardAction: false, isAddon }
         )
       );
     }
@@ -439,7 +448,7 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
             text: `⚠️ No timesheet profile found for *${userName}* (${userEmail || 'unknown email'}).\n\nPlease ensure your email or name matches your ERP timesheet profile.`,
             ...buildPendingRequestsCard(userName ?? 'Employee', []),
           },
-          { isCardAction: false }
+          { isCardAction: false, isAddon }
         )
       );
     }
@@ -475,7 +484,7 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
         text: `📋 Found ${pendingRecords.length} pending timesheet(s) for *${empDisplayName}*.`,
         ...cardPayload,
       },
-      { isCardAction: false }
+      { isCardAction: false, isAddon }
     )
   );
 }
