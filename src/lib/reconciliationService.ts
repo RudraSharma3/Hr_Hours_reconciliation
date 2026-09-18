@@ -420,16 +420,98 @@ export async function escalateUnresolved(): Promise<{ escalated: number }> {
   return { escalated: candidates.length };
 }
 
-/** Admin marks a flagged/escalated record as resolved after manual review. */
-export async function resolveRecord(recordId: string, adminEmail: string, note?: string): Promise<void> {
+/** Admin marks a flagged/escalated record as approved & resolved after reviewing employee justification. */
+export async function approveRecord(recordId: string, adminEmail: string, note?: string): Promise<void> {
   await prisma.reconciliationRecord.update({
     where: { id: recordId },
     data: { status: 'RESOLVED', finalisedAt: new Date() },
   });
-  await logAudit(recordId, 'RESOLVED', adminEmail, { note: note ?? null });
+  await logAudit(recordId, 'APPROVED_BY_HR', adminEmail, { note: note ?? 'Approved by HR' });
 }
 
-/** Sends/resends a confirmation email for a single record (with optional recipient override for testing). */
+/** Admin rejects an employee justification and requests correction. */
+export async function rejectRecord(recordId: string, adminEmail: string, rejectionReason: string): Promise<void> {
+  await prisma.reconciliationRecord.update({
+    where: { id: recordId },
+    data: { status: 'CORRECTION_REQUESTED' },
+  });
+  await logAudit(recordId, 'REJECTED_BY_HR', adminEmail, { rejectionReason });
+}
+
+/** Admin marks a flagged/escalated record as resolved after manual review. */
+export async function resolveRecord(recordId: string, adminEmail: string, note?: string): Promise<void> {
+  await approveRecord(recordId, adminEmail, note);
+}
+
+/**
+ * Broadcasts interactive Google Chat blind question cards to all employees with pending timesheets.
+ * Can be triggered manually by HR via Dashboard or automatically upon ERP import.
+ */
+export async function broadcastPendingBotMessages(month?: string): Promise<{ sentCount: number; totalPending: number }> {
+  const pendingRecords = await prisma.reconciliationRecord.findMany({
+    where: {
+      status: { in: ['AWAITING_RESPONSE', 'FLAGGED', 'CORRECTION_REQUESTED'] },
+      ...(month ? { month } : {}),
+    },
+    include: { employee: true, project: true },
+  });
+
+  const messaging = getMessagingAdapter();
+  const settings = await getSettings();
+  let sentCount = 0;
+
+  for (const record of pendingRecords) {
+    const { rawToken } = await createConfirmationToken(record.id, 'INITIAL');
+    const link = buildConfirmationLink(rawToken);
+
+    const subject = renderTemplate(settings.initialRequestSubject, { month: record.month });
+    const body = renderTemplate(settings.initialRequestBody, {
+      employeeName: record.employee.name,
+      projectName: record.project.name,
+      month: record.month,
+      link,
+    });
+
+    try {
+      const result = await messaging.send({
+        recipient: record.employee.email,
+        subject,
+        body,
+        template: 'INITIAL_REQUEST',
+        context: {
+          reconciliationRecordId: record.id,
+          employeeName: record.employee.name,
+          projectName: record.project.name,
+          month: record.month,
+          erpHours: record.erpHours,
+          kind: 'INITIAL_REQUEST',
+        },
+      });
+
+      await prisma.messageLog.create({
+        data: {
+          reconciliationRecordId: record.id,
+          channel: messaging.channel,
+          template: 'INITIAL_REQUEST',
+          recipient: record.employee.email,
+          subject,
+          body,
+          mocked: result.mocked,
+        },
+      });
+
+      await logAudit(record.id, 'BOT_CARD_DISPATCHED', 'system', { recipient: record.employee.email });
+      sentCount += 1;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[broadcastPendingBotMessages] Error sending to ${record.employee.email}:`, err);
+    }
+  }
+
+  return { sentCount, totalPending: pendingRecords.length };
+}
+
+/** Sends/resends a confirmation card/email for a single record (with optional recipient override for testing). */
 export async function sendConfirmationEmailForRecord(
   recordId: string,
   overrideRecipient?: string

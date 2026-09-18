@@ -57,6 +57,8 @@ export default function DashboardClient() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [resetting, setResetting] = useState(false);
+  const [triggeringBot, setTriggeringBot] = useState(false);
+  const [botStatus, setBotStatus] = useState<string | null>(null);
 
   function loadDashboard() {
     setLoading(true);
@@ -69,6 +71,29 @@ export default function DashboardClient() {
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  async function handleTriggerBot() {
+    setTriggeringBot(true);
+    setBotStatus(null);
+    try {
+      const res = await fetch('/api/reconciliation/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setBotStatus(`❌ Failed: ${data.error ?? 'Unknown error'}`);
+      } else {
+        setBotStatus(`🚀 ${data.message ?? `Triggered ${data.sentCount} bot cards.`}`);
+        loadDashboard();
+      }
+    } catch {
+      setBotStatus('❌ Network error triggering bot messages.');
+    } finally {
+      setTriggeringBot(false);
+    }
+  }
 
   async function handleResetData() {
     if (!window.confirm('Are you sure you want to clear all data? This will remove all dummy records, ERP batches, and reconciliation records, giving you a completely clean slate with 0 records.')) {
@@ -96,26 +121,43 @@ export default function DashboardClient() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Only unresolved exceptions need your attention — everything else is automated.
+            Zero-knowledge bot asks employees their hours $\rightarrow$ automated match verification or HR justification review.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center flex-wrap gap-2.5">
+          <button
+            type="button"
+            onClick={handleTriggerBot}
+            disabled={triggeringBot}
+            className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+          >
+            <span>🚀</span> {triggeringBot ? 'Triggering Bot...' : 'Trigger Bot to Pending Employees'}
+          </button>
           <button
             type="button"
             onClick={handleResetData}
             disabled={resetting}
             className="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors flex items-center gap-1.5"
           >
-            <span>🗑️</span> {resetting ? 'Resetting...' : 'Reset to 0 Records'}
+            <span>🗑️</span> {resetting ? 'Resetting...' : 'Reset to 0'}
           </button>
-          <Link href="/erp-import" className="btn-secondary">
-            + Import ERP Data
+          <Link href="/erp-import" className="btn-secondary text-xs">
+            + Import ERP
           </Link>
-          <Link href="/reconciliation" className="btn-primary">
+          <Link href="/reconciliation" className="btn-primary text-xs">
             View all records
           </Link>
         </div>
       </div>
+
+      {botStatus && (
+        <div className="p-3.5 rounded-lg bg-indigo-50 border border-indigo-200 text-xs font-medium text-indigo-900 flex items-center justify-between">
+          <span>{botStatus}</span>
+          <button onClick={() => setBotStatus(null)} className="text-indigo-500 hover:text-indigo-800 font-bold ml-2">
+            ✕
+          </button>
+        </div>
+      )}
 
       {loading || !summary ? (
         <p className="text-sm text-slate-500">Loading metrics...</p>

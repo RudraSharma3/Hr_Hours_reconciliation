@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { submitEmployeeConfirmation } from '@/lib/reconciliationService';
 import {
   buildMatchSuccessCard,
-  buildMismatchCard,
+  buildDiscrepancyQuestionCard,
+  buildAwaitingHrConfirmationCard,
   buildPendingRequestsCard,
   buildHelpCard,
 } from '@/lib/adapters/messaging/googleChatAdapter';
@@ -17,7 +18,7 @@ export const dynamic = 'force-dynamic';
  * https://<your-domain>/api/chat/google
  *
  * Processes:
- * 1. CARD_CLICKED: Form submissions from interactive Cards v2 (employee submits hours).
+ * 1. CARD_CLICKED: Form submissions from interactive Cards v2 (employee submits hours / justification).
  * 2. MESSAGE: Text queries from employees (e.g. "pending", "status", "help").
  * 3. ADDED_TO_SPACE: Onboarding welcome card.
  */
@@ -117,17 +118,11 @@ export async function POST(req: NextRequest) {
     .trim();
   const text = (cleanRaw || rawText).trim().toLowerCase();
 
-  const isAddon = Boolean(
-    event.commonEventObject ||
-    event.chat ||
-    req.headers.get('user-agent')?.includes('Google-gsuiteaddons')
-  );
-
   try {
     // 1. ADDED_TO_SPACE Event: Onboarding card
     if (eventType === 'ADDED_TO_SPACE') {
       const resp = formatChatResponse({
-        text: '🤖 *Welcome to the Hours Reconciliation Bot!*\n\nType *pending* to view and confirm your open timesheets.\nType *help* for more information.',
+        text: '🤖 *Welcome to the Hours Reconciliation Bot!*\n\nI will automatically notify you when new timesheets are imported from ERP for verification.\nType *pending* to view any open timesheets.',
         ...buildHelpCard(),
       });
       // eslint-disable-next-line no-console
@@ -135,12 +130,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(resp);
     }
 
-    // 2. CARD_CLICKED Event: Interactive card submission
+    // 2. CARD_CLICKED Event: Interactive card submission (Step 1: Hours, Step 2: Explanation)
     if (eventType === 'CARD_CLICKED') {
       return await handleCardClick(event);
     }
 
-    // 3. MESSAGE Event: Direct chat or slash commands
+    // 3. MESSAGE Event: Direct chat or queries
     if (eventType === 'MESSAGE') {
       return await handleChatMessage(text, userEmail, userName);
     }
@@ -198,9 +193,13 @@ function formatChatResponse(payload: any, options: { isCardAction?: boolean } = 
   };
 }
 
-
 /**
  * Handles interactive Form submit button clicks on Google Chat Cards v2.
+ * Step 1: Employee submits blind hours (submitHoursConfirmation).
+ *   - If Exact Match: returns Match Success card.
+ *   - If Discrepancy: returns Discrepancy Question card (asking for reason/justification).
+ * Step 2: Employee submits justification (submitHoursExplanation).
+ *   - Updates record with justification and returns Awaiting HR Confirmation card.
  */
 async function handleCardClick(event: any) {
   const paramsMap: Record<string, string> = {};
@@ -251,7 +250,7 @@ async function handleCardClick(event: any) {
     return NextResponse.json(notFoundResp);
   }
 
-  // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat common.formInputs & action.formInputs)
+  // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat form inputs)
   const formInputs =
     event.commonEventObject?.formInputs ??
     event.common?.formInputs ??
@@ -259,8 +258,6 @@ async function handleCardClick(event: any) {
     event.chat?.buttonClickedPayload?.action?.formInputs ??
     event.formInputs ??
     {};
-
-  const inputFieldName = paramsMap.inputFieldName ?? `confirmedHours_${record.id}`;
 
   // Helper to extract string from diverse form input shapes
   const extractVal = (obj: any): string => {
@@ -273,6 +270,68 @@ async function handleCardClick(event: any) {
     if (obj.value != null) return String(obj.value);
     return '';
   };
+
+  const invokedFunction =
+    event.commonEventObject?.invokedFunction ??
+    event.action?.function ??
+    event.action?.actionMethodName ??
+    event.chat?.buttonClickedPayload?.action?.actionMethodName ??
+    'submitHoursConfirmation';
+
+  // ---------------------------------------------------------------------------
+  // STEP 2: Employee Submits Reason / Justification for Mismatch
+  // ---------------------------------------------------------------------------
+  if (invokedFunction === 'submitHoursExplanation') {
+    let explanationRaw =
+      extractVal(formInputs.employeeExplanation) ||
+      extractVal(formInputs.explanation) ||
+      'Discrepancy noted by employee';
+
+    const confirmedHours = paramsMap.confirmedHours
+      ? parseFloat(paramsMap.confirmedHours)
+      : record.employeeConfirmedHours ?? record.erpHours;
+
+    await prisma.reconciliationRecord.update({
+      where: { id: record.id },
+      data: {
+        employeeExplanation: explanationRaw.trim(),
+        status: 'FLAGGED',
+        result: 0,
+      },
+    });
+
+    await prisma.auditEvent.create({
+      data: {
+        reconciliationRecordId: record.id,
+        eventType: 'EMPLOYEE_JUSTIFICATION_SUBMITTED',
+        actor: 'employee',
+        details: JSON.stringify({
+          explanation: explanationRaw.trim(),
+          confirmedHours,
+          erpHours: record.erpHours,
+          difference: record.difference ?? Math.abs(confirmedHours - record.erpHours),
+        }),
+      },
+    });
+
+    const awaitingCard = buildAwaitingHrConfirmationCard({
+      employeeName: record.employee.name,
+      projectName: record.project.name,
+      month: record.month,
+      confirmedHours,
+      explanation: explanationRaw.trim(),
+    });
+
+    const formatted = formatChatResponse(awaitingCard, { isCardAction: true });
+    // eslint-disable-next-line no-console
+    console.log(`[handleCardClick] Justification saved for record ${recordId}. Responding with awaiting card.`);
+    return NextResponse.json(formatted);
+  }
+
+  // ---------------------------------------------------------------------------
+  // STEP 1: Employee Submits Blind Confirmed Hours
+  // ---------------------------------------------------------------------------
+  const inputFieldName = paramsMap.inputFieldName ?? `confirmedHours_${record.id}`;
 
   let hoursRaw = extractVal(formInputs[inputFieldName]);
   if (!hoursRaw && formInputs.confirmedHours) {
@@ -290,7 +349,7 @@ async function handleCardClick(event: any) {
     }
   }
 
-  // If user clicked confirm with an empty box, default to confirming their erpHours
+  // Parse entered hours
   let confirmedHours = record.erpHours;
   if (hoursRaw && hoursRaw.trim() !== '') {
     const parsed = parseFloat(hoursRaw.trim());
@@ -299,57 +358,66 @@ async function handleCardClick(event: any) {
     }
   }
 
-  const rawExplanation = extractVal(formInputs.explanation);
-  const explanation = rawExplanation.trim() ? rawExplanation.trim() : undefined;
+  const diff = Math.abs(confirmedHours - record.erpHours);
 
-  const isCorrection =
-    record.status === 'CORRECTION_REQUESTED' || record.status === 'FLAGGED';
-
-  // Execute reconciliation submission & zero-tolerance matching rule
-  try {
+  // Exact Match (Zero Difference)
+  if (diff === 0) {
     await submitEmployeeConfirmation({
       recordId: record.id,
       confirmedHours,
-      explanation,
-      isCorrection,
+      isCorrection: false,
       skipOutboundNotification: true,
     });
-  } catch (err) {
+
+    const matchCard = buildMatchSuccessCard({
+      employeeName: record.employee.name,
+      projectName: record.project.name,
+      month: record.month,
+      confirmedHours,
+      erpHours: record.erpHours,
+    });
+
+    const formatted = formatChatResponse(matchCard, { isCardAction: true });
     // eslint-disable-next-line no-console
-    console.error('Error in submitEmployeeConfirmation:', err);
+    console.log(`[handleCardClick] Exact match for record ${recordId}. Responding with success card.`);
+    return NextResponse.json(formatted);
   }
 
-  // Re-fetch updated record to render appropriate instant response card
-  const updated = await prisma.reconciliationRecord.findUniqueOrThrow({
+  // Discrepancy Flagged -> Prompt for Reason / Justification
+  await prisma.reconciliationRecord.update({
     where: { id: record.id },
-    include: { employee: true, project: true },
+    data: {
+      employeeConfirmedHours: confirmedHours,
+      difference: diff,
+      result: 0,
+      status: 'FLAGGED',
+    },
   });
 
-  let cardPayload: any;
-  if (updated.status === 'MATCHED') {
-    cardPayload = buildMatchSuccessCard({
-      employeeName: updated.employee.name,
-      projectName: updated.project.name,
-      month: updated.month,
-      confirmedHours,
-      erpHours: updated.erpHours,
-    });
-  } else {
-    cardPayload = buildMismatchCard({
-      recordId: updated.id,
-      employeeName: updated.employee.name,
-      projectName: updated.project.name,
-      month: updated.month,
-      confirmedHours,
-      erpHours: updated.erpHours,
-      difference: updated.difference ?? Math.abs(confirmedHours - updated.erpHours),
-      explanation,
-    });
-  }
+  await prisma.auditEvent.create({
+    data: {
+      reconciliationRecordId: record.id,
+      eventType: 'EMPLOYEE_SUBMITTED_MISMATCH',
+      actor: 'employee',
+      details: JSON.stringify({
+        confirmedHours,
+        erpHours: record.erpHours,
+        difference: diff,
+      }),
+    },
+  });
 
-  const formatted = formatChatResponse(cardPayload, { isCardAction: true });
+  const discrepancyCard = buildDiscrepancyQuestionCard({
+    recordId: record.id,
+    employeeName: record.employee.name,
+    projectName: record.project.name,
+    month: record.month,
+    confirmedHours,
+  });
+
+  const formatted = formatChatResponse(discrepancyCard, { isCardAction: true });
   // eslint-disable-next-line no-console
-  console.log(`[handleCardClick] Responding for record ${recordId} (${updated.status}):\n`, JSON.stringify(formatted, null, 2));
+  console.log(`[handleCardClick] Discrepancy flagged for record ${recordId} (diff: ${diff}). Responding with justification question card.`);
   return NextResponse.json(formatted);
 }
 
