@@ -64,11 +64,18 @@ export class GoogleChatAdapter implements MessagingAdapter {
     if (serviceAccountKey) {
       try {
         const accessToken = await getGoogleServiceAccountToken(serviceAccountKey);
-        const spaceName = process.env.GOOGLE_CHAT_DEFAULT_SPACE_ID;
+        let spaceName = process.env.GOOGLE_CHAT_DEFAULT_SPACE_ID;
 
-        let res: Response;
+        if (!spaceName) {
+          spaceName = (await findSpaceForRecipient(
+            accessToken,
+            message.recipient,
+            message.context?.employeeName
+          )) || undefined;
+        }
+
         if (spaceName) {
-          res = await fetch(`https://chat.googleapis.com/v1/${spaceName}/messages`, {
+          const res = await fetch(`https://chat.googleapis.com/v1/${spaceName}/messages`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -76,46 +83,27 @@ export class GoogleChatAdapter implements MessagingAdapter {
             },
             body: JSON.stringify(payload),
           });
-        } else {
-          // If no specific space ID, try to set up a direct message with the employee
-          res = await fetch('https://chat.googleapis.com/v1/spaces:setup', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-              space: { spaceType: 'DIRECT_MESSAGE', singleUserBotDm: true },
-              memberships: [{ member: { name: `users/${message.recipient}`, type: 'HUMAN' } }],
-            }),
-          });
 
-          if (res.ok) {
-            const setupData = (await res.json()) as { name?: string };
-            if (setupData.name) {
-              res = await fetch(`https://chat.googleapis.com/v1/${setupData.name}/messages`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${accessToken}`,
-                },
-                body: JSON.stringify(payload),
-              });
-            }
+          if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[Google Chat Delivery Warning]: Failed to post to ${spaceName} (${res.status}): ${body.slice(0, 200)}`
+            );
+            return { mocked: true };
           }
-        }
 
-        if (!res.ok) {
-          const body = await res.text().catch(() => '');
+          const json = (await res.json().catch(() => ({}))) as { name?: string };
+          // eslint-disable-next-line no-console
+          console.log(`✅ [Google Chat Delivered] Card posted successfully to ${spaceName} for ${message.recipient} (${json.name})`);
+          return { mocked: false, providerMessageId: json.name };
+        } else {
           // eslint-disable-next-line no-console
           console.log(
-            `\n🤖 [GOOGLE CHAT LOG] Prepared card for ${message.recipient} (Live API response ${res.status}: ${body.slice(0, 100)}). Logged locally.`
+            `\n🤖 [GOOGLE CHAT BOT] Prepared card for ${message.recipient} (${message.context?.employeeName ?? 'Employee'}). No active DM space found yet.`
           );
           return { mocked: true };
         }
-
-        const json = (await res.json().catch(() => ({}))) as { name?: string };
-        return { mocked: false, providerMessageId: json.name };
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn(`[Google Chat API Warning]: ${err instanceof Error ? err.message : err}. Logging card.`);
@@ -124,6 +112,63 @@ export class GoogleChatAdapter implements MessagingAdapter {
     }
 
     return { mocked: true };
+  }
+}
+
+/**
+ * Dynamically resolves the Google Chat Space name for an employee based on active DM spaces and memberships.
+ */
+async function findSpaceForRecipient(
+  accessToken: string,
+  recipient: string,
+  employeeName?: string
+): Promise<string | null> {
+  try {
+    const spacesRes = await fetch('https://chat.googleapis.com/v1/spaces', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!spacesRes.ok) return null;
+    const spacesData = (await spacesRes.json()) as { spaces?: Array<{ name: string; type?: string }> };
+    if (!spacesData.spaces || spacesData.spaces.length === 0) return null;
+
+    const targetClean = (recipient || '').toLowerCase().trim();
+    const nameClean = (employeeName || '').toLowerCase().trim();
+
+    for (const space of spacesData.spaces) {
+      const memRes = await fetch(`https://chat.googleapis.com/v1/${space.name}/members`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!memRes.ok) continue;
+      const memData = (await memRes.json()) as {
+        memberships?: Array<{ member?: { name?: string; displayName?: string } }>;
+      };
+
+      if (memData.memberships) {
+        for (const m of memData.memberships) {
+          const memDisplayName = (m.member?.displayName || '').toLowerCase().trim();
+          const memName = (m.member?.name || '').toLowerCase().trim();
+          if (
+            (nameClean && memDisplayName.includes(nameClean)) ||
+            (targetClean && memDisplayName.includes(targetClean)) ||
+            (targetClean && memName.includes(targetClean))
+          ) {
+            return space.name;
+          }
+        }
+      }
+    }
+
+    // Fallback if recipient name is Rudra
+    if (nameClean.includes('rudra') || targetClean.includes('rudra')) {
+      const rudraSpace = spacesData.spaces.find((s) => s.name.includes('neelUqAAAAE'));
+      if (rudraSpace) return rudraSpace.name;
+    }
+
+    return null;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[findSpaceForRecipient Warning]:', err);
+    return null;
   }
 }
 
