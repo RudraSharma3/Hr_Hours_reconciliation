@@ -48,6 +48,6 @@ Implement an automated **Proactive Zero-Knowledge (Blind) Hours Verification & D
 - Implemented multi-step interactive conversation flow in `src/app/api/chat/google/route.ts`.
 - Added broadcast endpoint `src/app/api/reconciliation/broadcast/route.ts` and 1-click **"🚀 Trigger Bot to Pending Employees"** on Dashboard.
 - Added **Approve Justification** and **Reject Justification** controls to `src/app/reconciliation/[id]/RecordDetailClient.tsx` and `src/app/api/reconciliation/[id]/route.ts`.
-- Fixed TypeScript compile error in `src/app/api/chat/google/route.ts` and ensured card action error/fallback responses always return valid `cardsV2` structures.
-- Automated test suite passed (`npx vitest run tests/googleChatAdapter.test.ts`).
-- Production build compiled with zero errors (`npx next build`) and pushed to `main` (`a5289ba`).
+- Fixed Google Workspace Add-on protobuf response parsing by ensuring pure `hostAppDataAction` envelope without conflicting root fields.
+- Verified live Vercel endpoint against both exact match and discrepancy justification flows.
+- Production build compiled with zero errors (`npx next build`) and pushed to `main` (`a93d8d6`).
