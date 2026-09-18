@@ -77,13 +77,13 @@ export default function RecordDetailClient({ id }: { id: string }) {
 
   useEffect(load, [id]);
 
-  async function handleResolve() {
+  async function handleApprove() {
     setResolving(true);
     try {
       await fetch(`/api/reconciliation/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resolve', note }),
+        body: JSON.stringify({ action: 'approve', note: note || 'Approved by HR' }),
       });
       load();
       setNote('');
@@ -92,7 +92,26 @@ export default function RecordDetailClient({ id }: { id: string }) {
     }
   }
 
-  async function handleSendEmail(e: React.FormEvent) {
+  async function handleReject() {
+    if (!note.trim()) {
+      alert('Please enter a note explaining why this justification is being rejected.');
+      return;
+    }
+    setResolving(true);
+    try {
+      await fetch(`/api/reconciliation/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject', rejectionReason: note.trim() }),
+      });
+      load();
+      setNote('');
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  async function handleSendCard(e: React.FormEvent) {
     e.preventDefault();
     if (!testEmail) return;
     setSendingEmail(true);
@@ -101,22 +120,22 @@ export default function RecordDetailClient({ id }: { id: string }) {
       const res = await fetch(`/api/reconciliation/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'send_email', recipient: testEmail }),
+        body: JSON.stringify({ action: 'send_chat_card', recipient: testEmail }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setEmailStatus({ success: false, message: data.error ?? 'Failed to send email' });
+        setEmailStatus({ success: false, message: data.error ?? 'Failed to dispatch card' });
       } else {
         setEmailStatus({
           success: true,
           message: data.mocked
-            ? `[Demo Mode] Email logged for ${data.recipient}. Set EMAIL_MODE=smtp in .env to deliver real emails to actual inboxes!`
-            : `🎉 Real email successfully sent to ${data.recipient}! Check your inbox.`,
+            ? `[Demo Mode] Google Chat Card logged for ${data.recipient}. In live mode, this card appears directly in Google Chat.`
+            : `🎉 Interactive Google Chat card successfully pushed to ${data.recipient}!`,
         });
         load();
       }
     } catch {
-      setEmailStatus({ success: false, message: 'Network error sending email' });
+      setEmailStatus({ success: false, message: 'Network error dispatching card' });
     } finally {
       setSendingEmail(false);
     }
@@ -124,7 +143,7 @@ export default function RecordDetailClient({ id }: { id: string }) {
 
   if (loading || !record) return <p className="text-sm text-slate-500">Loading...</p>;
 
-  const canResolve = ['FLAGGED', 'CORRECTION_REQUESTED', 'ESCALATED'].includes(record.status);
+  const canDecide = ['FLAGGED', 'CORRECTION_REQUESTED', 'ESCALATED', 'AWAITING_RESPONSE'].includes(record.status);
 
   // Extract the latest confirmation URL from the message logs (e.g. http://.../confirm/...)
   const latestMessageWithLink = [...record.messages]
@@ -161,51 +180,29 @@ export default function RecordDetailClient({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Direct link banner for HR testing / access */}
-      {latestLink && record.status !== 'MATCHED' && record.status !== 'RESOLVED' && (
-        <div className="card p-5 bg-gradient-to-r from-indigo-50 to-blue-50 border-2 border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-bold text-indigo-950 flex items-center gap-2">
-              <span>📧</span> Employee Confirmation Link
-            </p>
-            <p className="text-xs text-indigo-800 mt-0.5">
-              This is the secure link sent to {record.employee.name} to confirm their August hours.
-            </p>
-          </div>
-          <a
-            href={latestLink}
-            target="_blank"
-            rel="noreferrer"
-            className="btn-primary bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-semibold rounded-lg shadow-sm whitespace-nowrap inline-flex items-center gap-2"
-          >
-            <span>🔗</span> Open Confirmation Page ↗
-          </a>
-        </div>
-      )}
-
-      {/* Test Email Card */}
+      {/* Instant Dispatch / Test Card */}
       <div className="card p-5 border-2 border-slate-200 bg-slate-50/50">
         <h2 className="text-sm font-bold text-slate-900 mb-1 flex items-center gap-2">
-          <span>✉️</span> Send / Test Email to Any Inbox
+          <span>🤖</span> Push Google Chat Blind Verification Card
         </h2>
         <p className="text-xs text-slate-500 mb-3">
-          Want to test receiving the real email in your own inbox? Enter your email address below and click send.
+          Push the interactive blind question card to the employee&apos;s Google Chat space immediately for live testing.
         </p>
-        <form onSubmit={handleSendEmail} className="flex flex-wrap items-center gap-3">
+        <form onSubmit={handleSendCard} className="flex flex-wrap items-center gap-3">
           <input
             type="email"
             value={testEmail}
             onChange={(e) => setTestEmail(e.target.value)}
-            placeholder="your-email@example.com"
+            placeholder="employee@company.com"
             className="input text-sm flex-1 min-w-[240px] bg-white font-medium"
             required
           />
           <button
             type="submit"
             disabled={sendingEmail}
-            className="btn-primary bg-slate-800 hover:bg-slate-900 text-white text-xs px-4 py-2.5 font-semibold rounded-lg flex items-center gap-1.5"
+            className="btn-primary bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-4 py-2.5 font-semibold rounded-lg flex items-center gap-1.5 shadow-sm"
           >
-            {sendingEmail ? 'Sending...' : '📤 Send Email to This Address'}
+            {sendingEmail ? 'Pushing...' : '🚀 Push Bot Card to Google Chat'}
           </button>
         </form>
         {emailStatus && (
@@ -222,7 +219,7 @@ export default function RecordDetailClient({ id }: { id: string }) {
       {/* Summary Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card p-4">
-          <p className="text-xs font-medium text-slate-500">ERP hours</p>
+          <p className="text-xs font-medium text-slate-500">ERP timesheet</p>
           <p className="text-2xl font-bold text-slate-900 mt-1">{record.erpHours} hrs</p>
         </div>
         <div className="card p-4">
@@ -243,44 +240,81 @@ export default function RecordDetailClient({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* Flagged Alert Box */}
+      {/* Discrepancy & Justification Review Box */}
       {(record.status === 'FLAGGED' || record.difference) && (
-        <div className="card p-4 border-red-200 bg-red-50 text-red-900">
-          <p className="text-sm font-semibold">⚠️ Hours Discrepancy Flagged</p>
-          <p className="text-xs text-red-800 mt-1">
-            The employee confirmed <strong>{record.employeeConfirmedHours} hrs</strong>, but ERP shows{' '}
-            <strong>{record.erpHours} hrs</strong> (Difference: <strong>{record.difference} hrs</strong>).
-          </p>
+        <div className="card p-5 border-2 border-amber-300 bg-amber-50/60 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-amber-950 flex items-center gap-1.5">
+              <span>⚠️</span> Hours Discrepancy Awaiting HR Review
+            </span>
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900">
+              Diff: {record.difference} hrs
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="bg-white p-3 rounded-lg border border-amber-200">
+              <span className="text-slate-500 font-medium">ERP Timesheet:</span>
+              <p className="text-sm font-bold text-slate-800 mt-0.5">{record.erpHours} hrs</p>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-amber-200">
+              <span className="text-slate-500 font-medium">Employee Stated:</span>
+              <p className="text-sm font-bold text-indigo-700 mt-0.5">{record.employeeConfirmedHours} hrs</p>
+            </div>
+          </div>
+
+          {record.employeeExplanation ? (
+            <div className="bg-white p-4 rounded-lg border border-amber-200 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-wider text-amber-900 mb-1">
+                Employee Stated Justification:
+              </p>
+              <p className="text-sm text-slate-800 font-medium italic">&quot;{record.employeeExplanation}&quot;</p>
+            </div>
+          ) : (
+            <p className="text-xs text-amber-800 italic">
+              Employee has entered hours differing from ERP. Waiting for employee to submit justification via Google Chat.
+            </p>
+          )}
         </div>
       )}
 
-      {/* Employee Explanation */}
-      {record.employeeExplanation && (
-        <div className="card p-4 bg-amber-50/50 border-amber-200">
-          <p className="text-xs font-semibold uppercase tracking-wider text-amber-900 mb-1">
-            Employee Explanation
-          </p>
-          <p className="text-sm text-slate-800">{record.employeeExplanation}</p>
-        </div>
-      )}
+      {/* HR Decision & Approval Box */}
+      {canDecide && (
+        <div className="card p-5 border-2 border-slate-200 bg-white space-y-4">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">HR Decision & Actions</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Review the employee&apos;s justification. You can approve to finalize or reject to request revised timesheet hours.
+            </p>
+          </div>
 
-      {/* Resolution Box */}
-      {canResolve && (
-        <div className="card p-5 border-2 border-emerald-100 bg-emerald-50/30">
-          <h2 className="text-sm font-bold text-slate-900 mb-1">Resolve this record</h2>
-          <p className="text-xs text-slate-500 mb-3">
-            If you have approved the hours or updated ERPNext, add a note and mark this resolved.
-          </p>
-          <textarea
-            className="input mb-3 text-sm bg-white"
-            rows={2}
-            placeholder="e.g. Verified with team lead, leave days adjusted in payroll..."
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <button className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleResolve} disabled={resolving}>
-            {resolving ? 'Resolving...' : '✓ Mark as Resolved'}
-          </button>
+          <div>
+            <label className="label text-xs">HR Decision Notes / Rejection Reason</label>
+            <textarea
+              className="input text-sm bg-slate-50"
+              rows={2}
+              placeholder="e.g. Overtime approved by project lead, adjustments reflected in payroll..."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-4 py-2.5 rounded-lg flex items-center gap-1.5 shadow-sm"
+              onClick={handleApprove}
+              disabled={resolving}
+            >
+              {resolving ? 'Processing...' : '✓ Approve Justification (Mark Resolved)'}
+            </button>
+            <button
+              className="btn-secondary text-red-700 hover:bg-red-50 border-red-200 font-semibold text-xs px-4 py-2.5 rounded-lg flex items-center gap-1.5"
+              onClick={handleReject}
+              disabled={resolving}
+            >
+              {resolving ? 'Processing...' : '✕ Reject Justification'}
+            </button>
+          </div>
         </div>
       )}
 

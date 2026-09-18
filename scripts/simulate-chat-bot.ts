@@ -163,9 +163,6 @@ async function main() {
       projectName: project.name,
       month: '2026-08',
       confirmedHours: 60,
-      erpHours: 76,
-      difference: 16,
-      explanation: 'Took 2 days unpaid leave in week 3',
     });
     console.log('   🤖 Instant Card Response Title:', mismatchCard.cardsV2[0].card.header.title);
 
