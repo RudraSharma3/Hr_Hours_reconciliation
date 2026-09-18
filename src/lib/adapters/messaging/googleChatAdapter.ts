@@ -383,7 +383,7 @@ export function buildDiscrepancyQuestionCard(params: {
                 {
                   decoratedText: {
                     topLabel: 'Status',
-                    text: '<font color="#d93025"><b>DISCREPANCY FLAGGED</b></font>',
+                    text: '<b>DISCREPANCY FLAGGED (Hours Mismatch)</b>',
                   },
                 },
                 {
