@@ -145,9 +145,12 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line no-console
     console.error('Unhandled error processing Google Chat event:', err);
     return NextResponse.json(
-      formatChatResponse({
-        text: `⚠️ Error processing request: ${err instanceof Error ? err.message : String(err)}`,
-      })
+      formatChatResponse(
+        {
+          text: `⚠️ Error processing request: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        { isCardAction: eventType === 'CARD_CLICKED' }
+      )
     );
   }
 }
@@ -162,15 +165,31 @@ function formatChatResponse(payload: any, options: { isCardAction?: boolean } = 
   const isCardAction = options.isCardAction ?? false;
 
   if (isCardAction) {
-    const cardUpdateMessage = cleanPayload.cardsV2
-      ? { cardsV2: cleanPayload.cardsV2 }
-      : { text: cleanPayload.text ?? 'Updated successfully.' };
+    const cardsV2 = cleanPayload.cardsV2 ?? [
+      {
+        cardId: `reconciliation-action-fallback-${Date.now()}`,
+        card: {
+          header: { title: cleanPayload.title ?? 'Hours Reconciliation' },
+          sections: [
+            {
+              widgets: [
+                {
+                  textParagraph: {
+                    text: cleanPayload.text ?? 'Updated successfully.',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ];
 
     return {
       hostAppDataAction: {
         chatDataAction: {
           updateMessageAction: {
-            message: cardUpdateMessage,
+            message: { cardsV2 },
           },
         },
       },
@@ -242,6 +261,7 @@ async function handleCardClick(event: any) {
     include: { employee: true, project: true },
   });
 
+  if (!record) {
     const notFoundResp = formatChatResponse(
       {
         cardsV2: [
