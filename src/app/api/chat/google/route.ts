@@ -242,9 +242,28 @@ async function handleCardClick(event: any) {
     include: { employee: true, project: true },
   });
 
-  if (!record) {
     const notFoundResp = formatChatResponse(
-      { text: '⚠️ Reconciliation record not found or already archived. Please type *pending* to refresh your timesheet list.' },
+      {
+        cardsV2: [
+          {
+            cardId: `reconciliation-not-found-${Date.now()}`,
+            card: {
+              header: { title: '⚠️ Timesheet Already Processed' },
+              sections: [
+                {
+                  widgets: [
+                    {
+                      textParagraph: {
+                        text: 'This timesheet card has already been processed or updated. Type <b>pending</b> to refresh your active list.',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
       { isCardAction: true }
     );
     return NextResponse.json(notFoundResp);
