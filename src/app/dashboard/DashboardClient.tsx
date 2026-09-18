@@ -121,7 +121,7 @@ export default function DashboardClient() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Zero-knowledge bot asks employees their hours $\rightarrow$ automated match verification or HR justification review.
+            Zero-knowledge bot asks employees their hours → automated match verification or HR justification review.
           </p>
         </div>
         <div className="flex items-center flex-wrap gap-2.5">
