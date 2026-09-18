@@ -6,43 +6,47 @@ This document captures the current work in progress, goals, acceptance criteria,
 
 ## 1. Goal
 
-Implement an interactive **Google Chat Bot** for employee hours reconciliation, enabling automated timesheet confirmation directly via Google Chat Cards v2, real-time submission handling, mismatch follow-ups, and reminders.
+Implement an automated **Proactive Zero-Knowledge (Blind) Hours Verification & Discrepancy Justification Bot** for Google Chat, including:
+1. **Automated Proactive Outbound Dispatch**: Triggered immediately upon ERPNext timesheet data fetch / import without requiring employee manual chat activation (`pending`, `hi`, `help`).
+2. **Blind / Zero-Knowledge Verification**: The bot asks *"How many hours did you spend on project X?"* without displaying what was recorded in ERPNext.
+3. **Interactive Discrepancy Flow**:
+   - Exact Match: Bot sends instant Thank You / Verified confirmation (`MATCHED`).
+   - Mismatch: Bot asks: *"Your hours do not match our timesheet record. What is the reason / justification for that?"*.
+   - Submission: Employee submits reason $\rightarrow$ Bot acknowledges: *"Your response is awaiting HR confirmation."*
+4. **Automated Follow-ups**: Recurring follow-up reminders until all pending project questions are completed.
+5. **HR Dashboard Approval & Rejection**: HR admins can view the justification on the dashboard and Approve or Reject.
+6. **Z Mode Adherence**: All card formats strictly maintain Google Workspace Add-on (`google.apps.card.v1`) specification.
+
+---
 
 ## 2. Acceptance Criteria
 
-- [x] Implement `GoogleChatAdapter` (`src/lib/adapters/messaging/googleChatAdapter.ts`) supporting interactive Google Chat Cards v2 with numeric inputs, project details, and submit buttons.
-- [x] Implement inbound webhook endpoint (`src/app/api/chat/google/route.ts`) handling `CARD_CLICKED`, `MESSAGE`, and `ADDED_TO_SPACE` events with real-time zero-tolerance matching.
-- [x] Connect adapter in `src/lib/adapters/messaging/index.ts` supporting `MESSAGING_CHANNEL=google_chat`.
-- [x] Update `.env.example` and documentation with Google Chat Bot configuration.
-- [x] Add unit and integration tests in `tests/googleChatAdapter.test.ts`.
-- [x] Verify all tests pass with `npm test`.
+- [x] Update `GoogleChatAdapter` to implement blind question cards (hiding ERP hours from initial question prompt).
+- [x] Implement multi-step interactive state machine in `/api/chat/google` for exact match vs. discrepancy question vs. justification submission.
+- [x] Ensure `generateReconciliationRequests` dispatches cards to employee spaces upon ERPNext sync / import.
+- [x] Implement recurring follow-up reminders loop in `sendReminders` for uncompleted questions.
+- [x] Implement HR Approval and Rejection actions with audit logging on `/api/reconciliation/[id]`.
+- [x] Update `RecordDetailClient.tsx` and `DashboardClient.tsx` with employee justification display and Approve / Reject controls.
+- [x] Add and pass unit tests in `tests/googleChatAdapter.test.ts`.
+
+---
 
 ## 3. Implementation Plan
 
-- [x] Step 1: Create detailed implementation plan in `implementation_plan.md`.
-- [x] Step 2: Implement Google Chat Card v2 builder and `GoogleChatAdapter`.
-- [x] Step 3: Implement `/api/chat/google` interactive webhook handler.
-- [x] Step 4: Wire adapter into messaging factory and environment configs.
-- [x] Step 5: Add automated tests for card builders and event parsing.
-- [x] Step 6: Verify full test suite and update documentation.
+- [x] Step 1: Create detailed implementation plan in `implementation_plan.md` and request user approval.
+- [x] Step 2: Update `GoogleChatAdapter` with blind card builder, discrepancy prompt card, and awaiting confirmation card.
+- [x] Step 3: Update `/api/chat/google/route.ts` with multi-step interactive state handlers.
+- [x] Step 4: Wire proactive auto-dispatch and recurring follow-up reminders in `reconciliationService.ts` and `erpImportService.ts`.
+- [x] Step 5: Update HR Dashboard & Record Detail page with justification review, approval, and rejection buttons.
+- [x] Step 6: Add automated tests in `tests/googleChatAdapter.test.ts` and verify with `npm test`.
+
+---
 
 ## 4. Current Status & Decisions
 
-- Interactive Google Chat Bot configured and deployed strictly adhering to the **Google Workspace Add-on (`google.apps.card.v1`) specification** (Z Mode, `origin main` commit `c195fe0`).
-- Root cause of button rejection resolved:
-  - In Google Workspace Add-ons, when updating a card message in-place via `updateMessageAction`, the `message` object must contain strictly `cardsV2` without conflicting top-level `text` fields.
-  - Buttons strictly use `google.apps.card.v1.Action` with `function: 'submitHoursConfirmation'` and `parameters: [{ key, value }]`.
-- Verified live on Vercel production:
-  - `pending` text query: Returns `200 OK` with `createMessageAction` containing open timesheet cards.
-  - `Confirm` button submission: Returns `200 OK` with clean `updateMessageAction` containing the verified status card.
-
-## 5. Handoff Notes
-
-- Modified Files:
-  - [`src/lib/adapters/messaging/googleChatAdapter.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/lib/adapters/messaging/googleChatAdapter.ts): Configured `google.apps.card.v1.Action` with `function` and `parameters`.
-  - [`src/app/api/chat/google/route.ts`](file:///c:/Users/HP/OneDrive/Desktop/employee-hours-reconciliation/src/app/api/chat/google/route.ts): Refined `updateMessageAction` to return clean `cardsV2` payload without conflicting fields.
-- Verification: Tested live end-to-end against production Vercel deployment (`https://hr-hours-reconciliation.vercel.app`).
-
-
-
-
+- Implemented zero-knowledge blind verification prompt cards in `src/lib/adapters/messaging/googleChatAdapter.ts`.
+- Implemented multi-step interactive conversation flow in `src/app/api/chat/google/route.ts`.
+- Added broadcast endpoint `src/app/api/reconciliation/broadcast/route.ts` and 1-click **"🚀 Trigger Bot to Pending Employees"** on Dashboard.
+- Added **Approve Justification** and **Reject Justification** controls to `src/app/reconciliation/[id]/RecordDetailClient.tsx` and `src/app/api/reconciliation/[id]/route.ts`.
+- Automated test suite passed 9/9 tests (`npx vitest run tests/googleChatAdapter.test.ts`).
+- Production build compiled with zero errors (`npx next build`).

@@ -3,14 +3,15 @@ import {
   GoogleChatAdapter,
   buildGoogleChatCardPayload,
   buildMatchSuccessCard,
-  buildMismatchCard,
+  buildDiscrepancyQuestionCard,
+  buildAwaitingHrConfirmationCard,
   buildPendingRequestsCard,
   buildHelpCard,
 } from '../src/lib/adapters/messaging/googleChatAdapter';
 import { getMessagingAdapter } from '../src/lib/adapters/messaging';
 import type { OutboundMessage } from '../src/lib/adapters/messaging/types';
 
-describe('GoogleChatAdapter & Cards v2', () => {
+describe('GoogleChatAdapter & Cards v2 (Zero-Knowledge & Discrepancy Flow)', () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
@@ -21,18 +22,18 @@ describe('GoogleChatAdapter & Cards v2', () => {
     process.env = originalEnv;
   });
 
-  it('buildGoogleChatCardPayload generates interactive card for initial request', () => {
+  it('buildGoogleChatCardPayload generates zero-knowledge blind question card (hiding erpHours)', () => {
     const msg: OutboundMessage = {
-      recipient: 'employee@company.local',
+      recipient: 'alice@company.local',
       subject: 'Please confirm your hours for 2026-08',
-      body: 'Hi Alice, please confirm your 76 hours on Project Apollo.',
+      body: 'Please confirm your hours on Project Apollo.',
       template: 'INITIAL_REQUEST',
       context: {
         reconciliationRecordId: 'rec-123',
         employeeName: 'Alice',
         projectName: 'Project Apollo',
         month: '2026-08',
-        erpHours: 76,
+        erpHours: 160,
         kind: 'INITIAL_REQUEST',
       },
     };
@@ -45,50 +46,30 @@ describe('GoogleChatAdapter & Cards v2', () => {
     expect(card.header.title).toContain('2026-08');
     expect(card.header.subtitle).toContain('Alice');
 
-    // Verify sections and input widgets
+    // Verify widgets
     const widgets = card.sections[0].widgets;
+    const allText = JSON.stringify(widgets);
+
+    // CRITICAL: Ensure erpHours (160) is NOT rendered anywhere in the blind card widgets
+    expect(allText).not.toContain('160 hrs');
+    expect(allText).not.toContain('ERP Timesheet Hours');
+
+    // Verify input widget exists
     const textInputWidget = widgets.find((w: any) => w.textInput && w.textInput.name === 'confirmedHours');
     expect(textInputWidget).toBeDefined();
 
+    // Verify action parameters
     const buttonWidget = widgets.find((w: any) => w.buttonList);
     expect(buttonWidget).toBeDefined();
     const button = (buttonWidget as any).buttonList.buttons[0];
+    expect(button.onClick.action.function).toBe('submitHoursConfirmation');
     expect(button.onClick.action.parameters).toContainEqual({
       key: 'reconciliationRecordId',
       value: 'rec-123',
     });
   });
 
-  it('buildGoogleChatCardPayload generates mismatch follow-up card with previous values', () => {
-    const msg: OutboundMessage = {
-      recipient: 'employee@company.local',
-      subject: 'Action needed: hours mismatch for 2026-08',
-      body: 'Difference detected between your submission and ERP.',
-      template: 'MISMATCH_FOLLOWUP',
-      context: {
-        reconciliationRecordId: 'rec-456',
-        employeeName: 'Bob',
-        projectName: 'Project Orion',
-        month: '2026-08',
-        erpHours: 76,
-        previousConfirmedHours: 60,
-        previousDifference: 16,
-        kind: 'MISMATCH_FOLLOWUP',
-      },
-    };
-
-    const payload = buildGoogleChatCardPayload(msg);
-    const card = payload.cardsV2[0].card;
-    expect(card.header.title).toContain('Mismatch');
-
-    const widgets = card.sections[0].widgets;
-    const previousInfo = widgets.find(
-      (w: any) => w.decoratedText && w.decoratedText.text.includes('60 hrs')
-    );
-    expect(previousInfo).toBeDefined();
-  });
-
-  it('buildGoogleChatCardPayload omits input widgets for escalation notice', () => {
+  it('buildGoogleChatCardPayload renders escalation details for HR escalation notices', () => {
     const msg: OutboundMessage = {
       recipient: 'hr-escalations@example.com',
       subject: 'Escalation Notice',
@@ -99,7 +80,7 @@ describe('GoogleChatAdapter & Cards v2', () => {
         employeeName: 'Charlie',
         projectName: 'Project Apollo',
         month: '2026-08',
-        erpHours: 76,
+        erpHours: 160,
         kind: 'ESCALATION_NOTICE',
       },
     };
@@ -108,6 +89,9 @@ describe('GoogleChatAdapter & Cards v2', () => {
     const widgets = payload.cardsV2[0].card.sections[0].widgets;
     const textInput = widgets.find((w: any) => w.textInput);
     expect(textInput).toBeUndefined();
+
+    const erpWidget = widgets.find((w: any) => w.decoratedText?.text?.includes('160 hrs'));
+    expect(erpWidget).toBeDefined();
   });
 
   it('buildMatchSuccessCard returns instant matching confirmation card', () => {
@@ -115,47 +99,73 @@ describe('GoogleChatAdapter & Cards v2', () => {
       employeeName: 'Neha Rao',
       projectName: 'Apollo',
       month: '2026-08',
-      confirmedHours: 76,
-      erpHours: 76,
+      confirmedHours: 160,
     });
 
-    expect(card.actionResponse.type).toBe('NEW_MESSAGE');
-    expect(card.cardsV2[0].card.header.title).toContain('Reconciled Successfully');
+    expect(card.cardsV2[0].card.header.title).toContain('Verified & Reconciled');
     const statusWidget = card.cardsV2[0].card.sections[0].widgets[0] as any;
     expect(statusWidget.decoratedText.text).toContain('MATCHED');
+    const hoursWidget = card.cardsV2[0].card.sections[0].widgets[1] as any;
+    expect(hoursWidget.decoratedText.text).toContain('160 hrs');
   });
 
-  it('buildMismatchCard returns instant discrepancy flagged card with re-submit button', () => {
-    const card = buildMismatchCard({
+  it('buildDiscrepancyQuestionCard returns follow-up card asking for reason / justification', () => {
+    const card = buildDiscrepancyQuestionCard({
       recordId: 'rec-test',
       employeeName: 'Amit Shah',
       projectName: 'Apollo',
       month: '2026-08',
-      confirmedHours: 60,
-      erpHours: 76,
-      difference: 16,
-      explanation: 'Sick leave on Friday',
+      confirmedHours: 140,
     });
 
-    expect(card.actionResponse.type).toBe('NEW_MESSAGE');
-    expect(card.cardsV2[0].card.header.title).toContain('Difference Flagged');
-    const comparisonWidget = card.cardsV2[0].card.sections[0].widgets[1] as any;
-    expect(comparisonWidget.decoratedText.text).toContain('60 hrs');
-    expect(comparisonWidget.decoratedText.text).toContain('16 hrs');
+    expect(card.cardsV2[0].card.header.title).toContain('Hours Do Not Match');
+    const statusWidget = card.cardsV2[0].card.sections[0].widgets[0] as any;
+    expect(statusWidget.decoratedText.text).toContain('DISCREPANCY FLAGGED');
+
+    // Input for employee justification
+    const explanationInput = card.cardsV2[0].card.sections[0].widgets.find(
+      (w: any) => w.textInput && w.textInput.name === 'employeeExplanation'
+    ) as any;
+    expect(explanationInput).toBeDefined();
+
+    // Button to submit justification
+    const button = (card.cardsV2[0].card.sections[0].widgets.find((w: any) => w.buttonList) as any)
+      .buttonList.buttons[0];
+    expect(button.onClick.action.function).toBe('submitHoursExplanation');
+    expect(button.onClick.action.parameters).toContainEqual({
+      key: 'reconciliationRecordId',
+      value: 'rec-test',
+    });
   });
 
-  it('buildPendingRequestsCard formats empty and non-empty lists appropriately', () => {
+  it('buildAwaitingHrConfirmationCard returns confirmation that explanation was submitted for HR review', () => {
+    const card = buildAwaitingHrConfirmationCard({
+      employeeName: 'Amit Shah',
+      projectName: 'Apollo',
+      month: '2026-08',
+      confirmedHours: 140,
+      explanation: 'Overtime hours moved to next sprint',
+    });
+
+    expect(card.cardsV2[0].card.header.title).toContain('Awaiting HR Confirmation');
+    const justificationWidget = card.cardsV2[0].card.sections[0].widgets[2] as any;
+    expect(justificationWidget.decoratedText.text).toContain('Overtime hours moved to next sprint');
+  });
+
+  it('buildPendingRequestsCard formats blind question cards for all pending projects', () => {
     const emptyCard = buildPendingRequestsCard('Dave', []);
     expect(emptyCard.cardsV2[0].card.header.title).toContain('All Caught Up');
 
     const activeCard = buildPendingRequestsCard('Dave', [
-      { id: 'rec-1', projectName: 'Alpha', month: '2026-08', erpHours: 40, status: 'AWAITING_RESPONSE' },
-      { id: 'rec-2', projectName: 'Beta', month: '2026-08', erpHours: 36, status: 'FLAGGED' },
+      { id: 'rec-1', projectName: 'Alpha', month: '2026-08', status: 'AWAITING_RESPONSE' },
+      { id: 'rec-2', projectName: 'Beta', month: '2026-08', status: 'FLAGGED' },
     ]);
     expect(activeCard.cardsV2[0].card.sections.length).toBe(2);
+    // Ensure no ERP hours are leaked in pending card
+    expect(JSON.stringify(activeCard)).not.toContain('ERP Hours');
   });
 
-  it('buildHelpCard returns available commands', () => {
+  it('buildHelpCard returns available instructions', () => {
     const helpCard = buildHelpCard();
     expect(helpCard.cardsV2[0].card.header.title).toContain('Reconciliation Bot');
   });

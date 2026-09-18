@@ -127,9 +127,9 @@ export class GoogleChatAdapter implements MessagingAdapter {
   }
 }
 
-
 /**
  * Builds an interactive Google Chat Card (v2) payload for reconciliation requests.
+ * Zero-Knowledge (Blind Verification): Does NOT reveal ERP timesheet hours to the employee.
  */
 export function buildGoogleChatCardPayload(message: OutboundMessage) {
   const ctx = message.context!;
@@ -137,7 +137,7 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
   const isMismatch = ctx.kind === 'MISMATCH_FOLLOWUP';
   const isReminder = ctx.kind === 'REMINDER';
 
-  let title = `Timesheet Confirmation (${ctx.month})`;
+  let title = `Timesheet Verification (${ctx.month})`;
   let subtitle = `${ctx.employeeName} • ${ctx.projectName}`;
 
   if (isEscalation) {
@@ -146,79 +146,100 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
   } else if (isMismatch) {
     title = `⚠️ Action Needed: Hours Mismatch (${ctx.month})`;
   } else if (isReminder) {
-    title = `⏰ Reminder: Pending Confirmation (${ctx.month})`;
+    title = `⏰ Reminder: Hours Verification (${ctx.month})`;
   }
 
+  // Escalation notice for HR
+  if (isEscalation) {
+    return {
+      cardsV2: [
+        {
+          cardId: `reconciliation-escalation-${ctx.reconciliationRecordId}`,
+          card: {
+            header: { title, subtitle },
+            sections: [
+              {
+                header: 'Escalation Details',
+                widgets: [
+                  {
+                    decoratedText: {
+                      topLabel: 'Project & Month',
+                      text: `<b>${ctx.projectName}</b> (${ctx.month})`,
+                    },
+                  },
+                  {
+                    decoratedText: {
+                      topLabel: 'ERP Timesheet Hours',
+                      text: `<b>${ctx.erpHours} hrs</b>`,
+                    },
+                  },
+                  ...(ctx.previousConfirmedHours != null
+                    ? [
+                        {
+                          decoratedText: {
+                            topLabel: 'Employee Confirmed',
+                            text: `<b>${ctx.previousConfirmedHours} hrs</b> (Difference: ${ctx.previousDifference ?? 0} hrs)`,
+                          },
+                        },
+                      ]
+                    : []),
+                  {
+                    textParagraph: {
+                      text: message.body.replace(/\n/g, '<br>'),
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+  }
+
+  // Zero-Knowledge / Blind Verification card for employee (Hides ERP hours)
   const widgets: unknown[] = [
     {
       decoratedText: {
-        topLabel: 'Project & Month',
+        topLabel: 'Assigned Project',
         text: `<b>${ctx.projectName}</b> (${ctx.month})`,
       },
     },
     {
-      decoratedText: {
-        topLabel: 'ERP Timesheet Hours',
-        text: `<b>${ctx.erpHours} hrs</b>`,
+      textParagraph: {
+        text: `<b>How many hours did you spend on ${ctx.projectName} during ${ctx.month}?</b><br>Please enter your total hours worked below to verify your timesheet.`,
+      },
+    },
+    {
+      textInput: {
+        name: 'confirmedHours',
+        label: `Hours spent on ${ctx.projectName}`,
+        type: 'SINGLE_LINE',
+        ...(ctx.previousConfirmedHours != null
+          ? { value: String(ctx.previousConfirmedHours) }
+          : {}),
+      },
+    },
+    {
+      buttonList: {
+        buttons: [
+          {
+            text: isMismatch ? 'Submit Revised Hours' : 'Submit Hours',
+            onClick: {
+              action: {
+                function: 'submitHoursConfirmation',
+                parameters: [
+                  { key: 'reconciliationRecordId', value: ctx.reconciliationRecordId },
+                  { key: 'inputFieldName', value: 'confirmedHours' },
+                  { key: 'recipientEmail', value: message.recipient },
+                ],
+              },
+            },
+          },
+        ],
       },
     },
   ];
-
-  if (ctx.previousConfirmedHours != null) {
-    widgets.push({
-      decoratedText: {
-        topLabel: 'Previous Submission',
-        text: `You confirmed: <b>${ctx.previousConfirmedHours} hrs</b> (Difference: <b>${ctx.previousDifference ?? 0} hrs</b>)`,
-      },
-    });
-  }
-
-  widgets.push({
-    textParagraph: {
-      text: message.body.replace(/\n/g, '<br>'),
-    },
-  });
-
-  // For interactive requests that require employee submission (Initial, Mismatch, Reminder)
-  if (!isEscalation) {
-    widgets.push(
-      {
-        textInput: {
-          name: 'confirmedHours',
-          label: `Enter your confirmed hours for ${ctx.projectName}`,
-          type: 'SINGLE_LINE',
-          ...(ctx.previousConfirmedHours != null
-            ? { value: String(ctx.previousConfirmedHours) }
-            : {}),
-        },
-      },
-      {
-        textInput: {
-          name: 'explanation',
-          label: 'Explanation / Notes (optional, or explain difference)',
-          type: 'SINGLE_LINE',
-        },
-      },
-      {
-        buttonList: {
-          buttons: [
-            {
-              text: isMismatch ? 'Submit Corrected Hours' : 'Confirm Hours',
-              onClick: {
-                action: {
-                  function: 'submitHoursConfirmation',
-                  parameters: [
-                    { key: 'reconciliationRecordId', value: ctx.reconciliationRecordId },
-                    { key: 'recipientEmail', value: message.recipient },
-                  ],
-                },
-              },
-            },
-          ],
-        },
-      }
-    );
-  }
 
   return {
     cardsV2: [
@@ -242,34 +263,27 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
 }
 
 /**
- * Returns an instant Card v2 response when employee confirms hours and it matches.
- */
-/**
- * Returns an instant Card v2 response when employee confirms hours and it matches.
+ * Returns an instant Card v2 response when employee confirms hours and it matches (Z Mode).
  */
 export function buildMatchSuccessCard(params: {
   employeeName: string;
   projectName: string;
   month: string;
   confirmedHours: number;
-  erpHours: number;
+  erpHours?: number;
 }) {
   return {
-    text: `✅ Timesheet Reconciled Successfully: ${params.projectName} (${params.month}) - ${params.confirmedHours} hrs.`,
-    actionResponse: {
-      type: 'NEW_MESSAGE',
-    },
     cardsV2: [
       {
         cardId: `reconciliation-success-${Date.now()}`,
         card: {
           header: {
-            title: '✅ Timesheet Reconciled Successfully',
+            title: '✅ Hours Verified & Reconciled',
             subtitle: `${params.employeeName} • ${params.projectName} (${params.month})`,
           },
           sections: [
             {
-              header: 'Reconciliation Details',
+              header: 'Reconciliation Result',
               widgets: [
                 {
                   decoratedText: {
@@ -279,13 +293,13 @@ export function buildMatchSuccessCard(params: {
                 },
                 {
                   decoratedText: {
-                    topLabel: 'Confirmed & ERP Hours',
-                    text: `<b>${params.confirmedHours} hrs</b> (ERP: ${params.erpHours} hrs)`,
+                    topLabel: 'Verified Hours',
+                    text: `<b>${params.confirmedHours} hrs</b>`,
                   },
                 },
                 {
                   textParagraph: {
-                    text: 'Thank you! Your hours have been verified and finalized. No further action is required.',
+                    text: `Thank you! Your entered hours (<b>${params.confirmedHours} hrs</b>) for <b>${params.projectName}</b> have been verified and matched. Your timesheet is approved and finalized.`,
                   },
                 },
               ],
@@ -298,73 +312,50 @@ export function buildMatchSuccessCard(params: {
 }
 
 /**
- * Returns an instant Card v2 response when employee confirms hours and there is a discrepancy.
+ * Returns an instant Card v2 response when employee's hours do not match,
+ * asking for reason / justification (Step 2 of Blind Verification flow).
  */
-export function buildMismatchCard(params: {
+export function buildDiscrepancyQuestionCard(params: {
   recordId: string;
   employeeName: string;
   projectName: string;
   month: string;
   confirmedHours: number;
-  erpHours: number;
-  difference: number;
-  explanation?: string;
 }) {
   return {
-    text: `⚠️ Hours Difference Flagged: ${params.projectName} (${params.month}) - ${params.confirmedHours} hrs confirmed vs ${params.erpHours} hrs in ERP (Diff: ${params.difference} hrs).`,
-    actionResponse: {
-      type: 'NEW_MESSAGE',
-    },
     cardsV2: [
       {
-        cardId: `reconciliation-mismatch-${params.recordId}-${Date.now()}`,
+        cardId: `reconciliation-discrepancy-${params.recordId}-${Date.now()}`,
         card: {
           header: {
-            title: '⚠️ Hours Difference Flagged',
+            title: '⚠️ Hours Do Not Match',
             subtitle: `${params.employeeName} • ${params.projectName} (${params.month})`,
           },
           sections: [
             {
-              header: 'Discrepancy Details',
+              header: 'Discrepancy Justification Required',
               widgets: [
                 {
                   decoratedText: {
                     topLabel: 'Status',
-                    text: '<b>FLAGGED (Discrepancy Detected)</b>',
+                    text: '<font color="#d93025"><b>DISCREPANCY FLAGGED</b></font>',
                   },
                 },
                 {
                   decoratedText: {
-                    topLabel: 'Comparison',
-                    text: `You confirmed: <b>${params.confirmedHours} hrs</b><br>ERP Timesheet: <b>${params.erpHours} hrs</b><br>Difference: <b>${params.difference} hrs</b>`,
+                    topLabel: 'Your Entered Hours',
+                    text: `<b>${params.confirmedHours} hrs</b> on ${params.projectName}`,
                   },
                 },
-                ...(params.explanation
-                  ? [
-                      {
-                        decoratedText: {
-                          topLabel: 'Your Note',
-                          text: params.explanation,
-                        },
-                      },
-                    ]
-                  : []),
                 {
                   textParagraph: {
-                    text: 'Please review your timesheet. You can update your hours below or provide additional context for HR review.',
+                    text: '<b>Your entered hours do not match our timesheet record.</b><br><br>What is the reason or justification for this difference? (e.g. overtime, client change request, unpaid leave, unlogged tasks)',
                   },
                 },
                 {
                   textInput: {
-                    name: 'confirmedHours',
-                    label: 'Corrected Hours',
-                    type: 'SINGLE_LINE',
-                  },
-                },
-                {
-                  textInput: {
-                    name: 'explanation',
-                    label: 'Reason for discrepancy / Correction note',
+                    name: 'employeeExplanation',
+                    label: 'State your reason / justification for HR',
                     type: 'SINGLE_LINE',
                   },
                 },
@@ -372,13 +363,13 @@ export function buildMismatchCard(params: {
                   buttonList: {
                     buttons: [
                       {
-                        text: 'Update & Re-Submit',
+                        text: 'Submit Justification for HR Review',
                         onClick: {
                           action: {
-                            function: 'submitHoursConfirmation',
+                            function: 'submitHoursExplanation',
                             parameters: [
                               { key: 'reconciliationRecordId', value: params.recordId },
-                              { key: 'inputFieldName', value: 'confirmedHours' },
+                              { key: 'confirmedHours', value: String(params.confirmedHours) },
                             ],
                           },
                         },
@@ -396,7 +387,66 @@ export function buildMismatchCard(params: {
 }
 
 /**
- * Builds a card listing an employee's pending reconciliation requests when queried.
+ * Returns an instant Card v2 response confirming that employee's explanation
+ * has been recorded and is awaiting HR confirmation on the dashboard.
+ */
+export function buildAwaitingHrConfirmationCard(params: {
+  employeeName: string;
+  projectName: string;
+  month: string;
+  confirmedHours: number;
+  explanation: string;
+}) {
+  return {
+    cardsV2: [
+      {
+        cardId: `reconciliation-awaiting-hr-${Date.now()}`,
+        card: {
+          header: {
+            title: '⏳ Awaiting HR Confirmation',
+            subtitle: `${params.employeeName} • ${params.projectName} (${params.month})`,
+          },
+          sections: [
+            {
+              header: 'Response Submitted',
+              widgets: [
+                {
+                  decoratedText: {
+                    topLabel: 'Status',
+                    text: '<b>PENDING HR CONFIRMATION</b>',
+                  },
+                },
+                {
+                  decoratedText: {
+                    topLabel: 'Confirmed Hours & Project',
+                    text: `<b>${params.confirmedHours} hrs</b> • ${params.projectName} (${params.month})`,
+                  },
+                },
+                {
+                  decoratedText: {
+                    topLabel: 'Your Stated Justification',
+                    text: `<i>"${params.explanation}"</i>`,
+                  },
+                },
+                {
+                  textParagraph: {
+                    text: 'Your response has been submitted successfully and is awaiting confirmation from HR. The HR team will review your justification on the dashboard.',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+/** Legacy alias for backward compatibility */
+export const buildMismatchCard = buildDiscrepancyQuestionCard;
+
+/**
+ * Builds a card listing an employee's pending reconciliation requests (Zero-Knowledge / Blind).
  */
 export function buildPendingRequestsCard(
   titleSubtitle: string,
@@ -404,7 +454,6 @@ export function buildPendingRequestsCard(
     id: string;
     projectName: string;
     month: string;
-    erpHours: number;
     status: string;
     employeeName?: string;
   }>
@@ -450,15 +499,14 @@ export function buildPendingRequestsCard(
             header: `${rec.employeeName ? `${rec.employeeName} • ` : ''}${rec.projectName} • ${rec.month}`,
             widgets: [
               {
-                decoratedText: {
-                  topLabel: 'ERP Hours & Status',
-                  text: `<b>${rec.erpHours} hrs</b> • Status: <b>${rec.status}</b>`,
+                textParagraph: {
+                  text: `How many hours did you spend on <b>${rec.projectName}</b> during ${rec.month}?`,
                 },
               },
               {
                 textInput: {
                   name: `confirmedHours_${rec.id}`,
-                  label: `Confirmed hours for ${rec.projectName}`,
+                  label: `Hours spent on ${rec.projectName}`,
                   type: 'SINGLE_LINE',
                 },
               },
@@ -466,7 +514,7 @@ export function buildPendingRequestsCard(
                 buttonList: {
                   buttons: [
                     {
-                      text: 'Confirm',
+                      text: 'Submit Hours',
                       onClick: {
                         action: {
                           function: 'submitHoursConfirmation',
