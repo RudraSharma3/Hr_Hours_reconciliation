@@ -156,58 +156,65 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Google Workspace Add-on response formatter for Google Chat (Z Mode).
- * - On CARD_CLICKED (button click): updates the existing interactive card in place using updateMessageAction.
- * - On MESSAGE / ADDED_TO_SPACE: posts a new message card to the space using createMessageAction.
+ * Dual-envelope response formatter for Google Chat.
+ * Fully compatible with BOTH:
+ * 1. Standard Google Chat API: returns { actionResponse: { type: 'UPDATE_MESSAGE' }, cardsV2: [...] } at the root.
+ * 2. Google Workspace Add-on (Z Mode): returns { hostAppDataAction: { chatDataAction: { updateMessageAction: { message: ... } } } }.
  */
 function formatChatResponse(payload: any, options: { isCardAction?: boolean } = {}) {
-  const { actionResponse, hostAppDataAction, ...cleanPayload } = payload;
   const isCardAction = options.isCardAction ?? false;
+  const cardsV2 = payload.cardsV2;
+  const text = payload.text;
 
-  if (isCardAction) {
-    const cardsV2 = cleanPayload.cardsV2 ?? [
-      {
-        cardId: `reconciliation-action-fallback-${Date.now()}`,
-        card: {
-          header: { title: cleanPayload.title ?? 'Hours Reconciliation' },
-          sections: [
-            {
-              widgets: [
-                {
-                  textParagraph: {
-                    text: cleanPayload.text ?? 'Updated successfully.',
-                  },
+  const fallbackCardsV2 = cardsV2 ?? [
+    {
+      cardId: `reconciliation-action-fallback-${Date.now()}`,
+      card: {
+        header: { title: payload.title ?? 'Hours Reconciliation' },
+        sections: [
+          {
+            widgets: [
+              {
+                textParagraph: {
+                  text: text ?? 'Updated successfully.',
                 },
-              ],
-            },
-          ],
-        },
-      },
-    ];
-
-    return {
-      hostAppDataAction: {
-        chatDataAction: {
-          updateMessageAction: {
-            message: { cardsV2 },
+              },
+            ],
           },
-        },
+        ],
       },
-    };
-  }
+    },
+  ];
 
-  const responseMessage = {
-    ...(cleanPayload.text ? { text: cleanPayload.text } : {}),
-    ...(cleanPayload.cardsV2 ? { cardsV2: cleanPayload.cardsV2 } : {}),
-  };
+  const resolvedCards = cardsV2 ?? (isCardAction ? fallbackCardsV2 : undefined);
 
   return {
+    // 1. Standard Google Chat API root properties
+    actionResponse: {
+      type: isCardAction ? 'UPDATE_MESSAGE' : 'NEW_MESSAGE',
+    },
+    ...(text ? { text } : {}),
+    ...(resolvedCards ? { cardsV2: resolvedCards } : {}),
+
+    // 2. Google Workspace Add-on Envelope (Z Mode)
     hostAppDataAction: {
-      chatDataAction: {
-        createMessageAction: {
-          message: responseMessage,
-        },
-      },
+      chatDataAction: isCardAction
+        ? {
+            updateMessageAction: {
+              message: {
+                ...(text ? { text } : {}),
+                cardsV2: resolvedCards,
+              },
+            },
+          }
+        : {
+            createMessageAction: {
+              message: {
+                ...(text ? { text } : {}),
+                ...(resolvedCards ? { cardsV2: resolvedCards } : {}),
+              },
+            },
+          },
     },
   };
 }
