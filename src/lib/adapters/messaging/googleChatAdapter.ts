@@ -534,59 +534,56 @@ export function buildPendingRequestsCard(
   }
 
   return {
-    cardsV2: records.map((rec) => ({
-      cardId: `reconciliation-${rec.id}`,
-      card: {
-        header: {
-          title: `Timesheet Verification (${rec.month})`,
-          subtitle: `${rec.employeeName ? `${rec.employeeName} • ` : ''}${rec.projectName}`,
-        },
-        sections: [
-          {
-            header: 'Hours Verification',
-            widgets: [
-              {
-                decoratedText: {
-                  topLabel: 'Assigned Project',
-                  text: `<b>${rec.projectName}</b> (${rec.month})`,
+    cardsV2: [
+      {
+        cardId: 'pending-requests',
+        card: {
+          header: {
+            title: `📋 Pending Timesheets (${records.length})`,
+            subtitle: titleSubtitle,
+          },
+          sections: records.map((rec) => {
+            const fieldName = `hours_${rec.id.replace(/-/g, '')}`;
+            return {
+              header: `${rec.employeeName ? `${rec.employeeName} • ` : ''}${rec.projectName} • ${rec.month}`,
+              widgets: [
+                {
+                  textParagraph: {
+                    text: `How many hours did you spend on <b>${rec.projectName}</b> during ${rec.month}?`,
+                  },
                 },
-              },
-              {
-                textParagraph: {
-                  text: `How many hours did you spend on <b>${rec.projectName}</b> during ${rec.month}?`,
+                {
+                  textInput: {
+                    name: fieldName,
+                    label: `Hours spent on ${rec.projectName}`,
+                    type: 'SINGLE_LINE',
+                  },
                 },
-              },
-              {
-                textInput: {
-                  name: 'confirmedHours',
-                  label: `Hours spent on ${rec.projectName}`,
-                  type: 'SINGLE_LINE',
-                },
-              },
-              {
-                buttonList: {
-                  buttons: [
-                    {
-                      text: 'Submit Hours',
-                      onClick: {
-                        action: {
-                          function: 'submitHoursConfirmation',
-                          actionMethodName: 'submitHoursConfirmation',
-                          parameters: [
-                            { key: 'reconciliationRecordId', value: rec.id },
-                            { key: 'inputFieldName', value: 'confirmedHours' },
-                          ],
+                {
+                  buttonList: {
+                    buttons: [
+                      {
+                        text: 'Submit Hours',
+                        onClick: {
+                          action: {
+                            function: 'submitHoursConfirmation',
+                            actionMethodName: 'submitHoursConfirmation',
+                            parameters: [
+                              { key: 'reconciliationRecordId', value: rec.id },
+                              { key: 'inputFieldName', value: fieldName },
+                            ],
+                          },
                         },
                       },
-                    },
-                  ],
+                    ],
+                  },
                 },
-              },
-            ],
-          },
-        ],
+              ],
+            };
+          }),
+        },
       },
-    })),
+    ],
   };
 }
 
