@@ -10,11 +10,10 @@ const PROTECTED_API_PREFIXES = [
   '/api/admin/me',
 ];
 
-// Inbound webhooks are called by other systems (ERPNext, Google Chat, Evolra), never by
+// Inbound webhooks are called by external systems (ERPNext, Google Chat), never by
 // a logged-in admin browser session — they authenticate themselves via
-// their own signature/secret check (see each route). Exclude them even
-// though their paths would otherwise fall under a protected prefix.
-const UNPROTECTED_API_EXCEPTIONS = ['/api/erp/webhook', '/api/chat', '/api/webhooks'];
+// their own signature/token checks (see each route).
+const UNPROTECTED_API_EXCEPTIONS = ['/api/erp/webhook', '/api/chat'];
 
 
 const SESSION_COOKIE = 'admin_session';

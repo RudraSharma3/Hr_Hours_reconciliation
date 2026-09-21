@@ -1,13 +1,10 @@
 /**
  * Messaging Adapter contract.
  *
- * The rest of the app (job runners, API routes) only calls `send()`. Today
- * there are two implementations: `EmailAdapter` (real SMTP or mock) and
- * `EvolraChatAdapter` (in-house Google Chat bot). Select the active one in
+ * The rest of the app (job runners, API routes) only calls `send()`.
+ * Active implementations: `GoogleChatAdapter` (native Google Chat Cards v2)
+ * and `EmailAdapter` (real SMTP or mock). Select the active one in
  * `src/lib/adapters/messaging/index.ts` via the `MESSAGING_CHANNEL` env var.
- * To add Teams, Slack, or WhatsApp Business API later, implement this same
- * interface and add another branch there (e.g. per-employee preferred
- * channel, or another env var value).
  */
 
 export type OutboundMessageContext = {
