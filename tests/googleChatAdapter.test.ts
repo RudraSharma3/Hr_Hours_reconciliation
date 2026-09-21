@@ -185,6 +185,19 @@ describe('GoogleChatAdapter & Cards v2 (Zero-Knowledge & Discrepancy Flow)', () 
     expect(result.mocked).toBe(true);
   });
 
+  it('buildPendingRequestsCard generates valid action parameters for each section', () => {
+    const card = buildPendingRequestsCard('Dave', [
+      { id: 'rec-xyz-123', projectName: 'Alpha', month: '2026-08', status: 'AWAITING_RESPONSE' },
+    ]);
+    const button = (card.cardsV2[0].card.sections[0].widgets.find((w: any) => w.buttonList) as any)
+      .buttonList.buttons[0];
+    expect(button.onClick.action.function).toBe('submitHoursConfirmation');
+    expect(button.onClick.action.parameters).toEqual([
+      { key: 'reconciliationRecordId', value: 'rec-xyz-123' },
+      { key: 'inputFieldName', value: 'hours_recxyz123' },
+    ]);
+  });
+
   it('getMessagingAdapter activates GoogleChatAdapter when MESSAGING_CHANNEL is google_chat', () => {
     process.env.MESSAGING_CHANNEL = 'google_chat';
     const adapter = getMessagingAdapter();
