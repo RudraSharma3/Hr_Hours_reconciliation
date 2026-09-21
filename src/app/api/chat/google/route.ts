@@ -242,30 +242,79 @@ function formatChatResponse(
  *   - Updates record with justification and returns Awaiting HR Confirmation card.
  */
 async function handleCardClick(event: any, isAddOn: boolean = true) {
+  // eslint-disable-next-line no-console
+  console.log('[handleCardClick] Raw Event:', JSON.stringify(event, null, 2));
+
   const paramsMap: Record<string, string> = {};
 
-  // 1. Google Workspace Add-on parameters
-  if (event.commonEventObject?.parameters) {
-    if (Array.isArray(event.commonEventObject.parameters)) {
-      for (const p of event.commonEventObject.parameters) {
-        if (p?.key && p?.value) paramsMap[p.key] = p.value;
+  const parseParams = (source: any) => {
+    if (!source) return;
+    if (Array.isArray(source)) {
+      for (const item of source) {
+        if (!item) continue;
+        if (Array.isArray(item) && item.length >= 2) {
+          paramsMap[String(item[0])] = String(item[1]);
+        } else if (typeof item === 'object') {
+          if (item.key != null && item.value != null) {
+            paramsMap[String(item.key)] = String(item.value);
+          } else {
+            for (const [k, v] of Object.entries(item)) {
+              if (v != null) paramsMap[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            }
+          }
+        }
       }
-    } else if (typeof event.commonEventObject.parameters === 'object') {
-      Object.assign(paramsMap, event.commonEventObject.parameters);
+    } else if (typeof source === 'object') {
+      if (source.key != null && source.value != null) {
+        paramsMap[String(source.key)] = String(source.value);
+      } else {
+        for (const [k, v] of Object.entries(source)) {
+          if (v != null) paramsMap[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        }
+      }
+    }
+  };
+
+  parseParams(event.commonEventObject?.parameters);
+  parseParams(event.action?.parameters);
+  parseParams(event.chat?.buttonClickedPayload?.action?.parameters);
+  parseParams(event.buttonClickedPayload?.action?.parameters);
+  parseParams(event.parameters);
+
+  let invokedFunction =
+    event.commonEventObject?.invokedFunction ??
+    event.action?.function ??
+    event.action?.actionMethodName ??
+    event.chat?.buttonClickedPayload?.action?.actionMethodName ??
+    event.chat?.buttonClickedPayload?.action?.function ??
+    'submitHoursConfirmation';
+
+  if (Array.isArray(invokedFunction) && invokedFunction.length > 0) {
+    invokedFunction = String(invokedFunction[0]);
+  }
+
+  // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat form inputs)
+  const formInputs =
+    event.commonEventObject?.formInputs ??
+    event.common?.formInputs ??
+    event.action?.formInputs ??
+    event.chat?.buttonClickedPayload?.action?.formInputs ??
+    event.formInputs ??
+    {};
+
+  // eslint-disable-next-line no-console
+  console.log('[handleCardClick] Parsed paramsMap:', paramsMap, 'invokedFunction:', invokedFunction, 'formInputs:', JSON.stringify(formInputs));
+
+  let recordId = paramsMap.reconciliationRecordId;
+  if (!recordId) {
+    for (const [k, v] of Object.entries(paramsMap)) {
+      if (k.toLowerCase().includes('reconciliation') || k.toLowerCase().includes('recordid')) {
+        recordId = v;
+        break;
+      }
     }
   }
 
-  // 2. Google Chat API action parameters
-  const actionParams =
-    event.action?.parameters ??
-    event.chat?.buttonClickedPayload?.action?.parameters ??
-    event.buttonClickedPayload?.action?.parameters ??
-    [];
-  for (const p of actionParams) {
-    if (p?.key && p?.value) paramsMap[p.key] = p.value;
-  }
-
-  const recordId = paramsMap.reconciliationRecordId;
   if (!recordId) {
     const errorResp = formatChatResponse(
       { text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.' },
@@ -310,33 +359,23 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
     return NextResponse.json(notFoundResp);
   }
 
-  // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat form inputs)
-  const formInputs =
-    event.commonEventObject?.formInputs ??
-    event.common?.formInputs ??
-    event.action?.formInputs ??
-    event.chat?.buttonClickedPayload?.action?.formInputs ??
-    event.formInputs ??
-    {};
-
   // Helper to extract string from diverse form input shapes
   const extractVal = (obj: any): string => {
-    if (!obj) return '';
+    if (obj == null) return '';
     if (typeof obj === 'string') return obj;
     if (typeof obj === 'number') return String(obj);
-    if (Array.isArray(obj)) return obj[0] ? String(obj[0]) : '';
-    if (obj.stringInputs?.value?.[0]) return String(obj.stringInputs.value[0]);
-    if (obj.value?.[0]) return String(obj.value[0]);
-    if (obj.value != null) return String(obj.value);
+    if (Array.isArray(obj)) return obj.length > 0 ? extractVal(obj[0]) : '';
+    if (obj.stringInputs?.value) return extractVal(obj.stringInputs.value);
+    if (obj.value != null) return extractVal(obj.value);
+    if (typeof obj === 'object') {
+      const entries = Object.entries(obj);
+      for (const [, v] of entries) {
+        const val = extractVal(v);
+        if (val) return val;
+      }
+    }
     return '';
   };
-
-  const invokedFunction =
-    event.commonEventObject?.invokedFunction ??
-    event.action?.function ??
-    event.action?.actionMethodName ??
-    event.chat?.buttonClickedPayload?.action?.actionMethodName ??
-    'submitHoursConfirmation';
 
   // ---------------------------------------------------------------------------
   // STEP 2: Employee Submits Reason / Justification for Mismatch
@@ -398,13 +437,24 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
     hoursRaw = extractVal(formInputs.confirmedHours);
   }
   if (!hoursRaw) {
+    const cleanId = record.id.replace(/-/g, '').toLowerCase();
     for (const [k, v] of Object.entries(formInputs)) {
-      if (k.toLowerCase().includes('confirmedhours')) {
+      const kLower = k.toLowerCase();
+      if (kLower.includes(cleanId) || kLower.includes('hours') || kLower.includes('confirmed')) {
         const candidate = extractVal(v);
         if (candidate) {
           hoursRaw = candidate;
           break;
         }
+      }
+    }
+  }
+  if (!hoursRaw) {
+    for (const [, v] of Object.entries(formInputs)) {
+      const candidate = extractVal(v);
+      if (candidate && !isNaN(parseFloat(candidate))) {
+        hoursRaw = candidate;
+        break;
       }
     }
   }
