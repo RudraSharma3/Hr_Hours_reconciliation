@@ -160,7 +160,7 @@ describe('GoogleChatAdapter & Cards v2 (Zero-Knowledge & Discrepancy Flow)', () 
       { id: 'rec-1', projectName: 'Alpha', month: '2026-08', status: 'AWAITING_RESPONSE' },
       { id: 'rec-2', projectName: 'Beta', month: '2026-08', status: 'FLAGGED' },
     ]);
-    expect(activeCard.cardsV2[0].card.sections.length).toBe(2);
+    expect(activeCard.cardsV2.length).toBe(2);
     // Ensure no ERP hours are leaked in pending card
     expect(JSON.stringify(activeCard)).not.toContain('ERP Hours');
   });

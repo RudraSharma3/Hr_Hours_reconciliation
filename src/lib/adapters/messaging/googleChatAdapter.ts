@@ -272,7 +272,6 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
             text: isMismatch ? 'Submit Revised Hours' : 'Submit Hours',
             onClick: {
               action: {
-                actionMethodName: 'submitHoursConfirmation',
                 function: 'submitHoursConfirmation',
                 parameters: [
                   { key: 'reconciliationRecordId', value: ctx.reconciliationRecordId },
@@ -412,7 +411,6 @@ export function buildDiscrepancyQuestionCard(params: {
                         text: 'Submit Justification for HR Review',
                         onClick: {
                           action: {
-                            actionMethodName: 'submitHoursExplanation',
                             function: 'submitHoursExplanation',
                             parameters: [
                               { key: 'reconciliationRecordId', value: params.recordId },
@@ -534,17 +532,23 @@ export function buildPendingRequestsCard(
   }
 
   return {
-    cardsV2: [
-      {
-        cardId: 'pending-list',
-        card: {
-          header: {
-            title: `📋 Pending Timesheets (${records.length})`,
-            subtitle: titleSubtitle,
-          },
-          sections: records.map((rec) => ({
-            header: `${rec.employeeName ? `${rec.employeeName} • ` : ''}${rec.projectName} • ${rec.month}`,
+    cardsV2: records.map((rec) => ({
+      cardId: `reconciliation-${rec.id}`,
+      card: {
+        header: {
+          title: `Timesheet Verification (${rec.month})`,
+          subtitle: `${rec.employeeName ? `${rec.employeeName} • ` : ''}${rec.projectName}`,
+        },
+        sections: [
+          {
+            header: 'Hours Verification',
             widgets: [
+              {
+                decoratedText: {
+                  topLabel: 'Assigned Project',
+                  text: `<b>${rec.projectName}</b> (${rec.month})`,
+                },
+              },
               {
                 textParagraph: {
                   text: `How many hours did you spend on <b>${rec.projectName}</b> during ${rec.month}?`,
@@ -552,7 +556,7 @@ export function buildPendingRequestsCard(
               },
               {
                 textInput: {
-                  name: `confirmedHours_${rec.id}`,
+                  name: 'confirmedHours',
                   label: `Hours spent on ${rec.projectName}`,
                   type: 'SINGLE_LINE',
                 },
@@ -564,11 +568,10 @@ export function buildPendingRequestsCard(
                       text: 'Submit Hours',
                       onClick: {
                         action: {
-                          actionMethodName: 'submitHoursConfirmation',
                           function: 'submitHoursConfirmation',
                           parameters: [
                             { key: 'reconciliationRecordId', value: rec.id },
-                            { key: 'inputFieldName', value: `confirmedHours_${rec.id}` },
+                            { key: 'inputFieldName', value: 'confirmedHours' },
                           ],
                         },
                       },
@@ -577,10 +580,10 @@ export function buildPendingRequestsCard(
                 },
               },
             ],
-          })),
-        },
+          },
+        ],
       },
-    ],
+    })),
   };
 }
 

@@ -26,10 +26,10 @@ async function main() {
     create: { id: 1 },
   });
 
-  // Provision Rudra Sharma profile for seamless Google Chat Bot recognition
-  await prisma.employee.upsert({
+  // Provision Rudra Sharma profile and sample projects for local bot testing
+  const rudra = await prisma.employee.upsert({
     where: { email: 'rudra@bytepx.com' },
-    update: {},
+    update: { name: 'Rudra Sharma' },
     create: {
       employeeCode: 'EMP-1005',
       name: 'Rudra Sharma',
@@ -37,7 +37,80 @@ async function main() {
     },
   });
 
-  console.log('Database ready with 0 dummy reconciliation records. Clean slate for live imports.');
+  const proj1 = await prisma.project.upsert({
+    where: { projectCode: 'PRJ-LEARNING' },
+    update: { name: 'Learning Phase' },
+    create: { projectCode: 'PRJ-LEARNING', name: 'Learning Phase' },
+  });
+
+  const proj2 = await prisma.project.upsert({
+    where: { projectCode: 'PRJ-HOLIDAY' },
+    update: { name: 'National Holiday' },
+    create: { projectCode: 'PRJ-HOLIDAY', name: 'National Holiday' },
+  });
+
+  const proj3 = await prisma.project.upsert({
+    where: { projectCode: 'PRJ-DATATOOL' },
+    update: { name: 'Data Tool' },
+    create: { projectCode: 'PRJ-DATATOOL', name: 'Data Tool' },
+  });
+
+  // Seed sample reconciliation records for 2026-08
+  await prisma.reconciliationRecord.upsert({
+    where: {
+      employeeId_projectId_month: {
+        employeeId: rudra.id,
+        projectId: proj1.id,
+        month: '2026-08',
+      },
+    },
+    update: { erpHours: 120, status: 'AWAITING_RESPONSE' },
+    create: {
+      employeeId: rudra.id,
+      projectId: proj1.id,
+      month: '2026-08',
+      erpHours: 120,
+      status: 'AWAITING_RESPONSE',
+    },
+  });
+
+  await prisma.reconciliationRecord.upsert({
+    where: {
+      employeeId_projectId_month: {
+        employeeId: rudra.id,
+        projectId: proj2.id,
+        month: '2026-08',
+      },
+    },
+    update: { erpHours: 8, status: 'AWAITING_RESPONSE' },
+    create: {
+      employeeId: rudra.id,
+      projectId: proj2.id,
+      month: '2026-08',
+      erpHours: 8,
+      status: 'AWAITING_RESPONSE',
+    },
+  });
+
+  await prisma.reconciliationRecord.upsert({
+    where: {
+      employeeId_projectId_month: {
+        employeeId: rudra.id,
+        projectId: proj3.id,
+        month: '2026-08',
+      },
+    },
+    update: { erpHours: 40, status: 'AWAITING_RESPONSE' },
+    create: {
+      employeeId: rudra.id,
+      projectId: proj3.id,
+      month: '2026-08',
+      erpHours: 40,
+      status: 'AWAITING_RESPONSE',
+    },
+  });
+
+  console.log('Database ready with test reconciliation records for Rudra Sharma.');
 }
 
 main()
