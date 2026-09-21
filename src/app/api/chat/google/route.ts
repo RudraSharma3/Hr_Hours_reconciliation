@@ -201,18 +201,7 @@ function formatChatResponse(
 
   if (isAddOn) {
     // Pure Google Workspace Add-on (Z Mode) response
-    if (isCardAction) {
-      return {
-        hostAppDataAction: {
-          chatDataAction: {
-            updateMessageAction: {
-              message: resolvedCards ? { cardsV2: resolvedCards } : { text: text ?? 'Updated successfully.' },
-            },
-          },
-        },
-      };
-    }
-
+    // Approach 2: Use createMessageAction for reliable response delivery without requiring in-place cardId patching
     return {
       hostAppDataAction: {
         chatDataAction: {
@@ -227,7 +216,7 @@ function formatChatResponse(
   // Pure Standard Google Chat API response
   return {
     actionResponse: {
-      type: isCardAction ? 'UPDATE_MESSAGE' : 'NEW_MESSAGE',
+      type: 'NEW_MESSAGE',
     },
     ...(resolvedCards ? { cardsV2: resolvedCards } : { text }),
   };
@@ -470,7 +459,7 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
 
   const diff = Math.abs(confirmedHours - record.erpHours);
 
-  // Update record in database
+  // Exact Match (Zero Difference)
   if (diff === 0) {
     await submitEmployeeConfirmation({
       recordId: record.id,
@@ -478,60 +467,56 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
       isCorrection: false,
       skipOutboundNotification: true,
     });
-  } else {
-    await prisma.reconciliationRecord.update({
-      where: { id: record.id },
-      data: {
-        employeeConfirmedHours: confirmedHours,
-        difference: diff,
-        result: 0,
-        status: 'FLAGGED',
-      },
+
+    const matchCard = buildMatchSuccessCard({
+      employeeName: record.employee.name,
+      projectName: record.project.name,
+      month: record.month,
+      confirmedHours,
+      erpHours: record.erpHours,
     });
 
-    await prisma.auditEvent.create({
-      data: {
-        reconciliationRecordId: record.id,
-        eventType: 'EMPLOYEE_SUBMITTED_MISMATCH',
-        actor: 'employee',
-        details: JSON.stringify({
-          confirmedHours,
-          erpHours: record.erpHours,
-          difference: diff,
-        }),
-      },
-    });
+    const formatted = formatChatResponse(matchCard, { isCardAction: true, isAddOn });
+    // eslint-disable-next-line no-console
+    console.log(`[handleCardClick] Exact match for record ${recordId}. Responding with success card.`);
+    return NextResponse.json(formatted);
   }
 
-  // Return "ZZ" response as requested
-  const zzCard = {
-    cardsV2: [
-      {
-        cardId: `reconciliation-zz-${Date.now()}`,
-        card: {
-          header: {
-            title: 'ZZ',
-          },
-          sections: [
-            {
-              widgets: [
-                {
-                  textParagraph: {
-                    text: 'ZZ',
-                  },
-                },
-              ],
-            },
-          ],
-        },
-      },
-    ],
-    text: 'ZZ',
-  };
+  // Discrepancy Flagged -> Prompt for Reason / Justification
+  await prisma.reconciliationRecord.update({
+    where: { id: record.id },
+    data: {
+      employeeConfirmedHours: confirmedHours,
+      difference: diff,
+      result: 0,
+      status: 'FLAGGED',
+    },
+  });
 
-  const formatted = formatChatResponse(zzCard, { isCardAction: true, isAddOn });
+  await prisma.auditEvent.create({
+    data: {
+      reconciliationRecordId: record.id,
+      eventType: 'EMPLOYEE_SUBMITTED_MISMATCH',
+      actor: 'employee',
+      details: JSON.stringify({
+        confirmedHours,
+        erpHours: record.erpHours,
+        difference: diff,
+      }),
+    },
+  });
+
+  const discrepancyCard = buildDiscrepancyQuestionCard({
+    recordId: record.id,
+    employeeName: record.employee.name,
+    projectName: record.project.name,
+    month: record.month,
+    confirmedHours,
+  });
+
+  const formatted = formatChatResponse(discrepancyCard, { isCardAction: true, isAddOn });
   // eslint-disable-next-line no-console
-  console.log(`[handleCardClick] Responding with ZZ for record ${recordId}.`);
+  console.log(`[handleCardClick] Discrepancy flagged for record ${recordId} (diff: ${diff}). Responding with justification question card.`);
   return NextResponse.json(formatted);
 }
 
