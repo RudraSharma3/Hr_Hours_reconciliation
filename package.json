@@ -18,7 +18,9 @@
     "job:generate-requests": "tsx scripts/run-job.ts generateRequests",
     "job:send-reminders": "tsx scripts/run-job.ts sendReminders",
     "job:escalate": "tsx scripts/run-job.ts escalate",
-    "sim:chat": "tsx scripts/simulate-chat-bot.ts"
+    "sim:chat": "tsx scripts/simulate-chat-bot.ts",
+    "test:bot": "node scripts/test-local-webhook.mjs",
+    "test:bot:prod": "node -e \"process.env.TEST_URL='https://hr-hours-reconciliation.vercel.app'; import('./scripts/test-local-webhook.mjs');\""
   },
 
   "dependencies": {
