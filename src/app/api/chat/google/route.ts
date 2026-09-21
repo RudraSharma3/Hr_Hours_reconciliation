@@ -461,6 +461,9 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
 
   // Exact response requested by user when hours are entered and submit is clicked
   const responsePayload = {
+    actionResponse: {
+      type: 'NEW_MESSAGE',
+    },
     hostAppDataAction: {
       chatDataAction: {
         createMessageAction: {
@@ -470,10 +473,11 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
         },
       },
     },
+    text: '✅ Hours verified and reconciled successfully.',
   };
 
   // eslint-disable-next-line no-console
-  console.log(`[handleCardClick] Responding with exact test confirmation text for record ${recordId}.`);
+  console.log(`[handleCardClick] Responding with test confirmation text for record ${recordId}.`);
   return NextResponse.json(responsePayload);
 }
 
