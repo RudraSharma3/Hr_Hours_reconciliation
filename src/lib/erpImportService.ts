@@ -54,7 +54,7 @@ export async function ingestErpEntries(params: {
 
     if (!existingEmp && entry.employeeName) {
       existingEmp = await prisma.employee.findFirst({
-        where: { name: { equals: entry.employeeName, mode: 'insensitive' } },
+        where: { name: { equals: entry.employeeName } },
       });
     }
 

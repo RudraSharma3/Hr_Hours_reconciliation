@@ -526,9 +526,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     const targetEmps = await prisma.employee.findMany({
       where: {
         OR: [
-          { name: { contains: targetQuery, mode: 'insensitive' as const } },
-          { employeeCode: { contains: targetQuery, mode: 'insensitive' as const } },
-          { email: { contains: targetQuery, mode: 'insensitive' as const } },
+          { name: { contains: targetQuery } },
+          { employeeCode: { contains: targetQuery } },
+          { email: { contains: targetQuery } },
         ],
       },
       select: { id: true, name: true },
@@ -549,9 +549,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     const myEmps = await prisma.employee.findMany({
       where: {
         OR: [
-          ...(userEmail ? [{ email: { equals: userEmail, mode: 'insensitive' as const } }] : []),
+          ...(userEmail ? [{ email: { equals: userEmail } }] : []),
           ...(userName && userName !== 'Employee'
-            ? [{ name: { equals: userName, mode: 'insensitive' as const } }]
+            ? [{ name: { equals: userName } }]
             : []),
         ],
       },
