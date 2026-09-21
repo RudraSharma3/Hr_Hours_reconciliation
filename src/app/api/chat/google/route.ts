@@ -495,8 +495,13 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
   }
 
   // 1. Check if the current sender is an authenticated Admin
+  // eslint-disable-next-line no-console
+  console.log(`[handleChatMessage] text="${text}", userEmail="${userEmail}", userName="${userName}", isAddOn=${isAddOn}`);
+
   const adminUser = userEmail
-    ? await prisma.adminUser.findUnique({ where: { email: userEmail } })
+    ? await prisma.adminUser.findFirst({
+        where: { email: { equals: userEmail, mode: 'insensitive' } },
+      })
     : null;
   const isAdmin = Boolean(adminUser);
 
@@ -519,9 +524,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     const targetEmps = await prisma.employee.findMany({
       where: {
         OR: [
-          { name: { contains: targetQuery } },
-          { employeeCode: { contains: targetQuery } },
-          { email: { contains: targetQuery } },
+          { name: { contains: targetQuery, mode: 'insensitive' } },
+          { employeeCode: { contains: targetQuery, mode: 'insensitive' } },
+          { email: { contains: targetQuery, mode: 'insensitive' } },
         ],
       },
       select: { id: true, name: true },
@@ -542,14 +547,17 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     const myEmps = await prisma.employee.findMany({
       where: {
         OR: [
-          ...(userEmail ? [{ email: { equals: userEmail } }] : []),
+          ...(userEmail ? [{ email: { equals: userEmail, mode: 'insensitive' as const } }] : []),
           ...(userName && userName !== 'Employee'
-            ? [{ name: { equals: userName } }]
+            ? [{ name: { equals: userName, mode: 'insensitive' as const } }]
             : []),
         ],
       },
       select: { id: true, name: true },
     });
+
+    // eslint-disable-next-line no-console
+    console.log(`[handleChatMessage] Found ${myEmps.length} employee profile(s) for ${userEmail || userName}`);
 
     if (myEmps.length === 0) {
       return NextResponse.json(
@@ -573,6 +581,9 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
     include: { project: true, employee: true },
     orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
   });
+
+  // eslint-disable-next-line no-console
+  console.log(`[handleChatMessage] Found ${pendingRecords.length} pending record(s) for ${empDisplayName}`);
 
   const cardPayload = buildPendingRequestsCard(
     empDisplayName,
