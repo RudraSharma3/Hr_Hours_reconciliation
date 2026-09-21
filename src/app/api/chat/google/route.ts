@@ -206,10 +206,7 @@ function formatChatResponse(
         hostAppDataAction: {
           chatDataAction: {
             updateMessageAction: {
-              message: {
-                ...(text ? { text } : {}),
-                ...(resolvedCards ? { cardsV2: resolvedCards } : {}),
-              },
+              message: resolvedCards ? { cardsV2: resolvedCards } : { text: text ?? 'Updated successfully.' },
             },
           },
         },
@@ -220,10 +217,7 @@ function formatChatResponse(
       hostAppDataAction: {
         chatDataAction: {
           createMessageAction: {
-            message: {
-              ...(text ? { text } : {}),
-              ...(resolvedCards ? { cardsV2: resolvedCards } : {}),
-            },
+            message: resolvedCards ? { cardsV2: resolvedCards } : { text: text ?? 'Message received.' },
           },
         },
       },
@@ -235,8 +229,7 @@ function formatChatResponse(
     actionResponse: {
       type: isCardAction ? 'UPDATE_MESSAGE' : 'NEW_MESSAGE',
     },
-    ...(text ? { text } : {}),
-    ...(resolvedCards ? { cardsV2: resolvedCards } : {}),
+    ...(resolvedCards ? { cardsV2: resolvedCards } : { text }),
   };
 }
 
