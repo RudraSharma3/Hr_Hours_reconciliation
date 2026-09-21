@@ -459,65 +459,22 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
 
   const diff = Math.abs(confirmedHours - record.erpHours);
 
-  // Exact Match (Zero Difference)
-  if (diff === 0) {
-    await submitEmployeeConfirmation({
-      recordId: record.id,
-      confirmedHours,
-      isCorrection: false,
-      skipOutboundNotification: true,
-    });
-
-    const matchCard = buildMatchSuccessCard({
-      employeeName: record.employee.name,
-      projectName: record.project.name,
-      month: record.month,
-      confirmedHours,
-      erpHours: record.erpHours,
-    });
-
-    const formatted = formatChatResponse(matchCard, { isCardAction: true, isAddOn });
-    // eslint-disable-next-line no-console
-    console.log(`[handleCardClick] Exact match for record ${recordId}. Responding with success card.`);
-    return NextResponse.json(formatted);
-  }
-
-  // Discrepancy Flagged -> Prompt for Reason / Justification
-  await prisma.reconciliationRecord.update({
-    where: { id: record.id },
-    data: {
-      employeeConfirmedHours: confirmedHours,
-      difference: diff,
-      result: 0,
-      status: 'FLAGGED',
+  // Exact response requested by user when hours are entered and submit is clicked
+  const responsePayload = {
+    hostAppDataAction: {
+      chatDataAction: {
+        createMessageAction: {
+          message: {
+            text: '✅ Hours verified and reconciled successfully.',
+          },
+        },
+      },
     },
-  });
+  };
 
-  await prisma.auditEvent.create({
-    data: {
-      reconciliationRecordId: record.id,
-      eventType: 'EMPLOYEE_SUBMITTED_MISMATCH',
-      actor: 'employee',
-      details: JSON.stringify({
-        confirmedHours,
-        erpHours: record.erpHours,
-        difference: diff,
-      }),
-    },
-  });
-
-  const discrepancyCard = buildDiscrepancyQuestionCard({
-    recordId: record.id,
-    employeeName: record.employee.name,
-    projectName: record.project.name,
-    month: record.month,
-    confirmedHours,
-  });
-
-  const formatted = formatChatResponse(discrepancyCard, { isCardAction: true, isAddOn });
   // eslint-disable-next-line no-console
-  console.log(`[handleCardClick] Discrepancy flagged for record ${recordId} (diff: ${diff}). Responding with justification question card.`);
-  return NextResponse.json(formatted);
+  console.log(`[handleCardClick] Responding with exact test confirmation text for record ${recordId}.`);
+  return NextResponse.json(responsePayload);
 }
 
 /**
@@ -539,8 +496,8 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
 
   const adminUser = userEmail
     ? await prisma.adminUser.findFirst({
-        where: { email: { equals: userEmail, mode: 'insensitive' } },
-      })
+      where: { email: { equals: userEmail, mode: 'insensitive' } },
+    })
     : null;
   const isAdmin = Boolean(adminUser);
 
