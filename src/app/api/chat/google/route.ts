@@ -470,7 +470,7 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
 
   const diff = Math.abs(confirmedHours - record.erpHours);
 
-  // Exact Match (Zero Difference)
+  // Update record in database
   if (diff === 0) {
     await submitEmployeeConfirmation({
       recordId: record.id,
@@ -478,56 +478,60 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
       isCorrection: false,
       skipOutboundNotification: true,
     });
-
-    const matchCard = buildMatchSuccessCard({
-      employeeName: record.employee.name,
-      projectName: record.project.name,
-      month: record.month,
-      confirmedHours,
-      erpHours: record.erpHours,
+  } else {
+    await prisma.reconciliationRecord.update({
+      where: { id: record.id },
+      data: {
+        employeeConfirmedHours: confirmedHours,
+        difference: diff,
+        result: 0,
+        status: 'FLAGGED',
+      },
     });
 
-    const formatted = formatChatResponse(matchCard, { isCardAction: true, isAddOn });
-    // eslint-disable-next-line no-console
-    console.log(`[handleCardClick] Exact match for record ${recordId}. Responding with success card.`);
-    return NextResponse.json(formatted);
+    await prisma.auditEvent.create({
+      data: {
+        reconciliationRecordId: record.id,
+        eventType: 'EMPLOYEE_SUBMITTED_MISMATCH',
+        actor: 'employee',
+        details: JSON.stringify({
+          confirmedHours,
+          erpHours: record.erpHours,
+          difference: diff,
+        }),
+      },
+    });
   }
 
-  // Discrepancy Flagged -> Prompt for Reason / Justification
-  await prisma.reconciliationRecord.update({
-    where: { id: record.id },
-    data: {
-      employeeConfirmedHours: confirmedHours,
-      difference: diff,
-      result: 0,
-      status: 'FLAGGED',
-    },
-  });
+  // Return "ZZ" response as requested
+  const zzCard = {
+    cardsV2: [
+      {
+        cardId: `reconciliation-zz-${Date.now()}`,
+        card: {
+          header: {
+            title: 'ZZ',
+          },
+          sections: [
+            {
+              widgets: [
+                {
+                  textParagraph: {
+                    text: 'ZZ',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+    text: 'ZZ',
+  };
 
-  await prisma.auditEvent.create({
-    data: {
-      reconciliationRecordId: record.id,
-      eventType: 'EMPLOYEE_SUBMITTED_MISMATCH',
-      actor: 'employee',
-      details: JSON.stringify({
-        confirmedHours,
-        erpHours: record.erpHours,
-        difference: diff,
-      }),
-    },
-  });
-
-  const discrepancyCard = buildDiscrepancyQuestionCard({
-    recordId: record.id,
-    employeeName: record.employee.name,
-    projectName: record.project.name,
-    month: record.month,
-    confirmedHours,
-  });
-
-  const formatted = formatChatResponse(discrepancyCard, { isCardAction: true, isAddOn });
+  const formatted = formatChatResponse(zzCard, { isCardAction: true, isAddOn });
   // eslint-disable-next-line no-console
-  console.log(`[handleCardClick] Discrepancy flagged for record ${recordId} (diff: ${diff}). Responding with justification question card.`);
+  console.log(`[handleCardClick] Responding with ZZ for record ${recordId}.`);
   return NextResponse.json(formatted);
 }
 
