@@ -1,5 +1,6 @@
 # ⏱️ Employee Hours Reconciliation Automation
 
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live%20Production%20Demo-brightgreen?style=flat-square&logo=vercel)](https://hr-hours-reconciliation.vercel.app)
 [![Next.js](https://img.shields.io/badge/Next.js-14.2-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-ORM-2D3748?style=flat-square&logo=prisma)](https://www.prisma.io/)
@@ -9,6 +10,16 @@
 
 > **Automates the monthly verification and reconciliation of ERP timesheet hours against employee-confirmed hours.**  
 > Eliminates manual HR chasing, protects confidential billable hours with zero-knowledge verification, and flags discrepancies instantly for review.
+
+---
+
+### 🌐 Live Production Demo
+
+- **🔗 Admin Dashboard & Web Portal**: [https://hr-hours-reconciliation.vercel.app](https://hr-hours-reconciliation.vercel.app)
+- **🤖 Google Chat Bot Interactive Endpoint**: `https://hr-hours-reconciliation.vercel.app/api/chat/google`
+- **🔑 Demo Admin Credentials**:
+  - **Email**: `admin@example.com`
+  - **Password**: `ChangeMe123!`
 
 ---
 
