@@ -31,8 +31,8 @@ export class GoogleChatAdapter implements MessagingAdapter {
       // eslint-disable-next-line no-console
       console.log(
         `\n🤖 [MOCK GOOGLE CHAT BOT] Message to: ${message.recipient}\n` +
-          `Subject: ${message.subject ?? '(none)'}\n` +
-          `Payload:\n${JSON.stringify(payload, null, 2)}\n`
+        `Subject: ${message.subject ?? '(none)'}\n` +
+        `Payload:\n${JSON.stringify(payload, null, 2)}\n`
       );
       return { mocked: true };
     }
@@ -220,13 +220,13 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
                   },
                   ...(ctx.previousConfirmedHours != null
                     ? [
-                        {
-                          decoratedText: {
-                            topLabel: 'Employee Confirmed',
-                            text: `<b>${ctx.previousConfirmedHours} hrs</b> (Difference: ${ctx.previousDifference ?? 0} hrs)`,
-                          },
+                      {
+                        decoratedText: {
+                          topLabel: 'Employee Confirmed',
+                          text: `<b>${ctx.previousConfirmedHours} hrs</b> (Difference: ${ctx.previousDifference ?? 0} hrs)`,
                         },
-                      ]
+                      },
+                    ]
                     : []),
                   {
                     textParagraph: {
@@ -272,6 +272,7 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
             text: isMismatch ? 'Submit Revised Hours' : 'Submit Hours',
             onClick: {
               action: {
+                actionMethodName: 'submitHoursConfirmation', // 👈 Required for HTTP Endpoints to receive CARD_CLICKED webhooks
                 function: 'submitHoursConfirmation',
                 parameters: [
                   { key: 'reconciliationRecordId', value: ctx.reconciliationRecordId },
@@ -411,6 +412,7 @@ export function buildDiscrepancyQuestionCard(params: {
                         text: 'Submit Justification for HR Review',
                         onClick: {
                           action: {
+                            actionMethodName: 'submitHoursExplanation',
                             function: 'submitHoursExplanation',
                             parameters: [
                               { key: 'reconciliationRecordId', value: params.recordId },
@@ -564,6 +566,7 @@ export function buildPendingRequestsCard(
                         text: 'Submit Hours',
                         onClick: {
                           action: {
+                            actionMethodName: 'submitHoursConfirmation',
                             function: 'submitHoursConfirmation',
                             parameters: [
                               { key: 'reconciliationRecordId', value: rec.id },
