@@ -234,233 +234,233 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
   // eslint-disable-next-line no-console
   console.log('[handleCardClick] Raw Event:', JSON.stringify(event, null, 2));
 
-  const paramsMap: Record<string, string> = {};
+  // const paramsMap: Record<string, string> = {};
 
-  const parseParams = (source: any) => {
-    if (!source) return;
-    if (Array.isArray(source)) {
-      for (const item of source) {
-        if (!item) continue;
-        if (Array.isArray(item) && item.length >= 2) {
-          paramsMap[String(item[0])] = String(item[1]);
-        } else if (typeof item === 'object') {
-          if (item.key != null && item.value != null) {
-            paramsMap[String(item.key)] = String(item.value);
-          } else {
-            for (const [k, v] of Object.entries(item)) {
-              if (v != null) paramsMap[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
-            }
-          }
-        }
-      }
-    } else if (typeof source === 'object') {
-      if (source.key != null && source.value != null) {
-        paramsMap[String(source.key)] = String(source.value);
-      } else {
-        for (const [k, v] of Object.entries(source)) {
-          if (v != null) paramsMap[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
-        }
-      }
-    }
-  };
+  // const parseParams = (source: any) => {
+  //   if (!source) return;
+  //   if (Array.isArray(source)) {
+  //     for (const item of source) {
+  //       if (!item) continue;
+  //       if (Array.isArray(item) && item.length >= 2) {
+  //         paramsMap[String(item[0])] = String(item[1]);
+  //       } else if (typeof item === 'object') {
+  //         if (item.key != null && item.value != null) {
+  //           paramsMap[String(item.key)] = String(item.value);
+  //         } else {
+  //           for (const [k, v] of Object.entries(item)) {
+  //             if (v != null) paramsMap[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  //           }
+  //         }
+  //       }
+  //     }
+  //   } else if (typeof source === 'object') {
+  //     if (source.key != null && source.value != null) {
+  //       paramsMap[String(source.key)] = String(source.value);
+  //     } else {
+  //       for (const [k, v] of Object.entries(source)) {
+  //         if (v != null) paramsMap[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  //       }
+  //     }
+  //   }
+  // };
 
-  parseParams(event.commonEventObject?.parameters);
-  parseParams(event.action?.parameters);
-  parseParams(event.chat?.buttonClickedPayload?.action?.parameters);
-  parseParams(event.buttonClickedPayload?.action?.parameters);
-  parseParams(event.parameters);
+  // parseParams(event.commonEventObject?.parameters);
+  // parseParams(event.action?.parameters);
+  // parseParams(event.chat?.buttonClickedPayload?.action?.parameters);
+  // parseParams(event.buttonClickedPayload?.action?.parameters);
+  // parseParams(event.parameters);
 
-  let invokedFunction =
-    event.commonEventObject?.invokedFunction ??
-    event.action?.function ??
-    event.action?.actionMethodName ??
-    event.chat?.buttonClickedPayload?.action?.actionMethodName ??
-    event.chat?.buttonClickedPayload?.action?.function ??
-    'submitHoursConfirmation';
+  // let invokedFunction =
+  //   event.commonEventObject?.invokedFunction ??
+  //   event.action?.function ??
+  //   event.action?.actionMethodName ??
+  //   event.chat?.buttonClickedPayload?.action?.actionMethodName ??
+  //   event.chat?.buttonClickedPayload?.action?.function ??
+  //   'submitHoursConfirmation';
 
-  if (Array.isArray(invokedFunction) && invokedFunction.length > 0) {
-    invokedFunction = String(invokedFunction[0]);
-  }
+  // if (Array.isArray(invokedFunction) && invokedFunction.length > 0) {
+  //   invokedFunction = String(invokedFunction[0]);
+  // }
 
-  // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat form inputs)
-  const formInputs =
-    event.commonEventObject?.formInputs ??
-    event.common?.formInputs ??
-    event.action?.formInputs ??
-    event.chat?.buttonClickedPayload?.action?.formInputs ??
-    event.formInputs ??
-    {};
+  // // Extract form inputs (supports Google Workspace Add-on commonEventObject & Google Chat form inputs)
+  // const formInputs =
+  //   event.commonEventObject?.formInputs ??
+  //   event.common?.formInputs ??
+  //   event.action?.formInputs ??
+  //   event.chat?.buttonClickedPayload?.action?.formInputs ??
+  //   event.formInputs ??
+  //   {};
 
-  // eslint-disable-next-line no-console
-  console.log('[handleCardClick] Parsed paramsMap:', paramsMap, 'invokedFunction:', invokedFunction, 'formInputs:', JSON.stringify(formInputs));
+  // // eslint-disable-next-line no-console
+  // console.log('[handleCardClick] Parsed paramsMap:', paramsMap, 'invokedFunction:', invokedFunction, 'formInputs:', JSON.stringify(formInputs));
 
-  let recordId = paramsMap.reconciliationRecordId;
-  if (!recordId) {
-    for (const [k, v] of Object.entries(paramsMap)) {
-      if (k.toLowerCase().includes('reconciliation') || k.toLowerCase().includes('recordid')) {
-        recordId = v;
-        break;
-      }
-    }
-  }
+  // let recordId = paramsMap.reconciliationRecordId;
+  // if (!recordId) {
+  //   for (const [k, v] of Object.entries(paramsMap)) {
+  //     if (k.toLowerCase().includes('reconciliation') || k.toLowerCase().includes('recordid')) {
+  //       recordId = v;
+  //       break;
+  //     }
+  //   }
+  // }
 
-  if (!recordId) {
-    const errorResp = formatChatResponse(
-      { text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.' },
-      { isCardAction: true, isAddOn }
-    );
-    // eslint-disable-next-line no-console
-    console.warn('handleCardClick: missing recordId. Response:', JSON.stringify(errorResp, null, 2));
-    return NextResponse.json(errorResp);
-  }
+  // if (!recordId) {
+  //   const errorResp = formatChatResponse(
+  //     { text: '⚠️ Error: Missing reconciliationRecordId in action parameters. Please type *pending* to refresh your timesheet list.' },
+  //     { isCardAction: true, isAddOn }
+  //   );
+  //   // eslint-disable-next-line no-console
+  //   console.warn('handleCardClick: missing recordId. Response:', JSON.stringify(errorResp, null, 2));
+  //   return NextResponse.json(errorResp);
+  // }
 
-  // Fetch target reconciliation record
-  const record = await prisma.reconciliationRecord.findUnique({
-    where: { id: recordId },
-    include: { employee: true, project: true },
-  });
+  // // Fetch target reconciliation record
+  // const record = await prisma.reconciliationRecord.findUnique({
+  //   where: { id: recordId },
+  //   include: { employee: true, project: true },
+  // });
 
-  if (!record) {
-    const notFoundResp = formatChatResponse(
-      {
-        cardsV2: [
-          {
-            cardId: `reconciliation-not-found-${Date.now()}`,
-            card: {
-              header: { title: '⚠️ Timesheet Already Processed' },
-              sections: [
-                {
-                  widgets: [
-                    {
-                      textParagraph: {
-                        text: 'This timesheet card has already been processed or updated. Type <b>pending</b> to refresh your active list.',
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
-          },
-        ],
-      },
-      { isCardAction: true, isAddOn }
-    );
-    return NextResponse.json(notFoundResp);
-  }
+  // if (!record) {
+  //   const notFoundResp = formatChatResponse(
+  //     {
+  //       cardsV2: [
+  //         {
+  //           cardId: `reconciliation-not-found-${Date.now()}`,
+  //           card: {
+  //             header: { title: '⚠️ Timesheet Already Processed' },
+  //             sections: [
+  //               {
+  //                 widgets: [
+  //                   {
+  //                     textParagraph: {
+  //                       text: 'This timesheet card has already been processed or updated. Type <b>pending</b> to refresh your active list.',
+  //                     },
+  //                   },
+  //                 ],
+  //               },
+  //             ],
+  //           },
+  //         },
+  //       ],
+  //     },
+  //     { isCardAction: true, isAddOn }
+  //   );
+  //   return NextResponse.json(notFoundResp);
+  // }
 
-  // Helper to extract string from diverse form input shapes
-  const extractVal = (obj: any): string => {
-    if (obj == null) return '';
-    if (typeof obj === 'string') return obj;
-    if (typeof obj === 'number') return String(obj);
-    if (Array.isArray(obj)) return obj.length > 0 ? extractVal(obj[0]) : '';
-    if (obj.stringInputs?.value) return extractVal(obj.stringInputs.value);
-    if (obj.value != null) return extractVal(obj.value);
-    if (typeof obj === 'object') {
-      const entries = Object.entries(obj);
-      for (const [, v] of entries) {
-        const val = extractVal(v);
-        if (val) return val;
-      }
-    }
-    return '';
-  };
+  // // Helper to extract string from diverse form input shapes
+  // const extractVal = (obj: any): string => {
+  //   if (obj == null) return '';
+  //   if (typeof obj === 'string') return obj;
+  //   if (typeof obj === 'number') return String(obj);
+  //   if (Array.isArray(obj)) return obj.length > 0 ? extractVal(obj[0]) : '';
+  //   if (obj.stringInputs?.value) return extractVal(obj.stringInputs.value);
+  //   if (obj.value != null) return extractVal(obj.value);
+  //   if (typeof obj === 'object') {
+  //     const entries = Object.entries(obj);
+  //     for (const [, v] of entries) {
+  //       const val = extractVal(v);
+  //       if (val) return val;
+  //     }
+  //   }
+  //   return '';
+  // };
 
-  // ---------------------------------------------------------------------------
-  // STEP 2: Employee Submits Reason / Justification for Mismatch
-  // ---------------------------------------------------------------------------
-  if (invokedFunction === 'submitHoursExplanation') {
-    let explanationRaw =
-      extractVal(formInputs.employeeExplanation) ||
-      extractVal(formInputs.explanation) ||
-      'Discrepancy noted by employee';
+  // // ---------------------------------------------------------------------------
+  // // STEP 2: Employee Submits Reason / Justification for Mismatch
+  // // ---------------------------------------------------------------------------
+  // if (invokedFunction === 'submitHoursExplanation') {
+  //   let explanationRaw =
+  //     extractVal(formInputs.employeeExplanation) ||
+  //     extractVal(formInputs.explanation) ||
+  //     'Discrepancy noted by employee';
 
-    const confirmedHours = paramsMap.confirmedHours
-      ? parseFloat(paramsMap.confirmedHours)
-      : record.employeeConfirmedHours ?? record.erpHours;
+  //   const confirmedHours = paramsMap.confirmedHours
+  //     ? parseFloat(paramsMap.confirmedHours)
+  //     : record.employeeConfirmedHours ?? record.erpHours;
 
-    await prisma.reconciliationRecord.update({
-      where: { id: record.id },
-      data: {
-        employeeExplanation: explanationRaw.trim(),
-        status: 'FLAGGED',
-        result: 0,
-      },
-    });
+  //   await prisma.reconciliationRecord.update({
+  //     where: { id: record.id },
+  //     data: {
+  //       employeeExplanation: explanationRaw.trim(),
+  //       status: 'FLAGGED',
+  //       result: 0,
+  //     },
+  //   });
 
-    await prisma.auditEvent.create({
-      data: {
-        reconciliationRecordId: record.id,
-        eventType: 'EMPLOYEE_JUSTIFICATION_SUBMITTED',
-        actor: 'employee',
-        details: JSON.stringify({
-          explanation: explanationRaw.trim(),
-          confirmedHours,
-          erpHours: record.erpHours,
-          difference: record.difference ?? Math.abs(confirmedHours - record.erpHours),
-        }),
-      },
-    });
+  //   await prisma.auditEvent.create({
+  //     data: {
+  //       reconciliationRecordId: record.id,
+  //       eventType: 'EMPLOYEE_JUSTIFICATION_SUBMITTED',
+  //       actor: 'employee',
+  //       details: JSON.stringify({
+  //         explanation: explanationRaw.trim(),
+  //         confirmedHours,
+  //         erpHours: record.erpHours,
+  //         difference: record.difference ?? Math.abs(confirmedHours - record.erpHours),
+  //       }),
+  //     },
+  //   });
 
-    const awaitingCard = buildAwaitingHrConfirmationCard({
-      employeeName: record.employee.name,
-      projectName: record.project.name,
-      month: record.month,
-      confirmedHours,
-      explanation: explanationRaw.trim(),
-    });
+  //   const awaitingCard = buildAwaitingHrConfirmationCard({
+  //     employeeName: record.employee.name,
+  //     projectName: record.project.name,
+  //     month: record.month,
+  //     confirmedHours,
+  //     explanation: explanationRaw.trim(),
+  //   });
 
-    const formatted = formatChatResponse(awaitingCard, { isCardAction: true, isAddOn });
-    // eslint-disable-next-line no-console
-    console.log(`[handleCardClick] Justification saved for record ${recordId}. Responding with awaiting card.`);
-    return NextResponse.json(formatted);
-  }
+  //   const formatted = formatChatResponse(awaitingCard, { isCardAction: true, isAddOn });
+  //   // eslint-disable-next-line no-console
+  //   console.log(`[handleCardClick] Justification saved for record ${recordId}. Responding with awaiting card.`);
+  //   return NextResponse.json(formatted);
+  // }
 
-  // ---------------------------------------------------------------------------
-  // STEP 1: Employee Submits Blind Confirmed Hours
-  // ---------------------------------------------------------------------------
-  const inputFieldName = paramsMap.inputFieldName ?? `confirmedHours_${record.id}`;
+  // // ---------------------------------------------------------------------------
+  // // STEP 1: Employee Submits Blind Confirmed Hours
+  // // ---------------------------------------------------------------------------
+  // const inputFieldName = paramsMap.inputFieldName ?? `confirmedHours_${record.id}`;
 
-  let hoursRaw = extractVal(formInputs[inputFieldName]);
-  if (!hoursRaw && formInputs.confirmedHours) {
-    hoursRaw = extractVal(formInputs.confirmedHours);
-  }
-  if (!hoursRaw) {
-    const cleanId = record.id.replace(/-/g, '').toLowerCase();
-    for (const [k, v] of Object.entries(formInputs)) {
-      const kLower = k.toLowerCase();
-      if (kLower.includes(cleanId) || kLower.includes('hours') || kLower.includes('confirmed')) {
-        const candidate = extractVal(v);
-        if (candidate) {
-          hoursRaw = candidate;
-          break;
-        }
-      }
-    }
-  }
-  if (!hoursRaw) {
-    for (const [, v] of Object.entries(formInputs)) {
-      const candidate = extractVal(v);
-      if (candidate && !isNaN(parseFloat(candidate))) {
-        hoursRaw = candidate;
-        break;
-      }
-    }
-  }
+  // let hoursRaw = extractVal(formInputs[inputFieldName]);
+  // if (!hoursRaw && formInputs.confirmedHours) {
+  //   hoursRaw = extractVal(formInputs.confirmedHours);
+  // }
+  // if (!hoursRaw) {
+  //   const cleanId = record.id.replace(/-/g, '').toLowerCase();
+  //   for (const [k, v] of Object.entries(formInputs)) {
+  //     const kLower = k.toLowerCase();
+  //     if (kLower.includes(cleanId) || kLower.includes('hours') || kLower.includes('confirmed')) {
+  //       const candidate = extractVal(v);
+  //       if (candidate) {
+  //         hoursRaw = candidate;
+  //         break;
+  //       }
+  //     }
+  //   }
+  // }
+  // if (!hoursRaw) {
+  //   for (const [, v] of Object.entries(formInputs)) {
+  //     const candidate = extractVal(v);
+  //     if (candidate && !isNaN(parseFloat(candidate))) {
+  //       hoursRaw = candidate;
+  //       break;
+  //     }
+  //   }
+  // }
 
-  // Parse entered hours as a float
-  let confirmedHours: number = parseFloat(String(record.erpHours));
-  if (hoursRaw && hoursRaw.trim() !== '') {
-    const parsedFloat = parseFloat(hoursRaw.trim());
-    if (!isNaN(parsedFloat) && parsedFloat >= 0 && parsedFloat <= 1000) {
-      confirmedHours = parsedFloat;
-    }
-  }
-  let confirmedHoursone = confirmedHours;
-  const diff: number = Math.abs(confirmedHoursone - record.erpHours);
+  // // Parse entered hours as a float
+  // let confirmedHours: number = parseFloat(String(record.erpHours));
+  // if (hoursRaw && hoursRaw.trim() !== '') {
+  //   const parsedFloat = parseFloat(hoursRaw.trim());
+  //   if (!isNaN(parsedFloat) && parsedFloat >= 0 && parsedFloat <= 1000) {
+  //     confirmedHours = parsedFloat;
+  //   }
+  // }
+  // let confirmedHoursone = confirmedHours;
+  // const diff: number = Math.abs(confirmedHoursone - record.erpHours);
 
-  // eslint-disable-next-line no-console
-  console.log(`[handleCardClick] Parsed confirmedHours: ${confirmedHours} (type: ${typeof confirmedHours}), diff: ${diff}, erpHours: ${record.erpHours}`);
+  // // eslint-disable-next-line no-console
+  // console.log(`[handleCardClick] Parsed confirmedHours: ${confirmedHours} (type: ${typeof confirmedHours}), diff: ${diff}, erpHours: ${record.erpHours}`);
 
   // Exact response requested by user when hours are entered and submit is clicked
   const responsePayload = {
@@ -478,9 +478,10 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
     },
     text: '✅ Hours verified and reconciled successfully.',
   };
+  console.log("responsePayload", JSON.stringify(responsePayload));
 
   // eslint-disable-next-line no-console
-  console.log(`[handleCardClick] Responding with test confirmation text for record ${recordId}.`);
+  //console.log(`[handleCardClick] Responding with test confirmation text for record ${recordId}.`);
   return NextResponse.json(responsePayload);
 }
 
