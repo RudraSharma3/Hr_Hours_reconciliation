@@ -448,16 +448,16 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
     }
   }
 
-  // Parse entered hours
-  let confirmedHours = record.erpHours;
+  // Parse entered hours as a float
+  let confirmedHours: number = parseFloat(String(record.erpHours));
   if (hoursRaw && hoursRaw.trim() !== '') {
-    const parsed = parseFloat(hoursRaw.trim());
-    if (!isNaN(parsed) && parsed >= 0 && parsed <= 1000) {
-      confirmedHours = parsed;
+    const parsedFloat = parseFloat(hoursRaw.trim());
+    if (!isNaN(parsedFloat) && parsedFloat >= 0 && parsedFloat <= 1000) {
+      confirmedHours = parsedFloat;
     }
   }
 
-  const diff = Math.abs(confirmedHours - record.erpHours);
+  const diff: number = Math.abs(confirmedHours - record.erpHours);
 
   // Exact response requested by user when hours are entered and submit is clicked
   const responsePayload = {
