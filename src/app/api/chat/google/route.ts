@@ -456,8 +456,8 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
       confirmedHours = parsedFloat;
     }
   }
-
-  const diff: number = Math.abs(confirmedHours - record.erpHours);
+  let confirmedHoursone = confirmedHours;
+  const diff: number = Math.abs(confirmedHoursone - record.erpHours);
 
   // eslint-disable-next-line no-console
   console.log(`[handleCardClick] Parsed confirmedHours: ${confirmedHours} (type: ${typeof confirmedHours}), diff: ${diff}, erpHours: ${record.erpHours}`);
