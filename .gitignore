@@ -24,3 +24,9 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Archives and bundles
+*.zip
+*.tar.gz
+*.tgz
+
+
