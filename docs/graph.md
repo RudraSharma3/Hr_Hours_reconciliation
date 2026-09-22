@@ -13,7 +13,7 @@ graph TD
         EmployeeLink[Employee Mobile/Desktop Browser]
         CronRunner[Cron / Scheduled CLI Runner]
         ERPWebhook[ERPNext Webhook Sender]
-        EvolraWebhook[Evolra Bot Webhook Sender]
+        GoogleChatUser[Google Chat User Client]
     end
 
     subgraph MiddlewareLayer [Edge Routing & Auth]
@@ -34,14 +34,13 @@ graph TD
     subgraph APIControllers [API Route Controllers]
         AdminAuthAPI["/api/admin/login, logout, me"]
         DashboardAPI["/api/dashboard"]
-        ReconAPI["/api/reconciliation, [id], export, generate"]
+        ReconAPI["/api/reconciliation, [id], export, generate, broadcast"]
         ErpAPI["/api/erp/import, sync-erpnext"]
         ConfirmAPI["/api/confirm/[token]"]
         GoogleChatAPI["/api/chat/google"]
         SettingsAPI["/api/settings"]
         CronAPI["/api/cron/generate-requests, send-reminders, escalate, pull-erpnext"]
         ERPWebhookAPI["/api/erp/webhook/erpnext"]
-        EvolraWebhookAPI["/api/webhooks/evolra"]
     end
 
     subgraph BusinessServices [Core Business Services]
@@ -64,7 +63,6 @@ graph TD
         MsgAdapterFactory["adapters/messaging/index.ts"]
         EmailAdapter["adapters/messaging/emailAdapter.ts"]
         GoogleChatAdapter["adapters/messaging/googleChatAdapter.ts"]
-        EvolraChatAdapter["adapters/messaging/evolraChatAdapter.ts"]
     end
 
     subgraph DataStorage [Data & Persistence Layer]
@@ -77,7 +75,7 @@ graph TD
     ConfirmPage --> ConfirmAPI
     CronRunner --> CronAPI
     ERPWebhook --> ERPWebhookAPI
-    EvolraWebhook --> EvolraWebhookAPI
+    GoogleChatUser --> GoogleChatAPI
 
     Middleware --> Presentation
     Middleware --> APIControllers
