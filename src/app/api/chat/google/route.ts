@@ -7,6 +7,7 @@ import {
   buildAwaitingHrConfirmationCard,
   buildPendingRequestsCard,
   buildHelpCard,
+  formatChatResponse,
 } from '@/lib/adapters/messaging/googleChatAdapter';
 
 export const dynamic = 'force-dynamic';
@@ -162,65 +163,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * Clean response formatter for Google Chat.
- * Supports:
- * 1. Google Workspace Add-on (Z Mode): returns hostAppDataAction without conflicting root properties.
- * 2. Standard Google Chat API: returns actionResponse and cardsV2 at root.
- */
-function formatChatResponse(
-  payload: any,
-  options: { isCardAction?: boolean; isAddOn?: boolean } = {}
-) {
-  const isCardAction = options.isCardAction ?? false;
-  const isAddOn = options.isAddOn ?? true; // Google Workspace Add-on default
-  const cardsV2 = payload.cardsV2;
-  const text = payload.text;
 
-  const fallbackCardsV2 = cardsV2 ?? [
-    {
-      cardId: `reconciliation-action-fallback-${Date.now()}`,
-      card: {
-        header: { title: payload.title ?? 'Hours Reconciliation' },
-        sections: [
-          {
-            widgets: [
-              {
-                textParagraph: {
-                  text: text ?? 'Updated successfully.',
-                },
-              },
-            ],
-          },
-        ],
-      },
-    },
-  ];
-
-  const resolvedCards = cardsV2 ?? (isCardAction ? fallbackCardsV2 : undefined);
-
-  if (isAddOn) {
-    // Pure Google Workspace Add-on (Z Mode) response
-    // Approach 2: Use createMessageAction for reliable response delivery without requiring in-place cardId patching
-    return {
-      hostAppDataAction: {
-        chatDataAction: {
-          createMessageAction: {
-            message: resolvedCards ? { cardsV2: resolvedCards } : { text: text ?? 'Message received.' },
-          },
-        },
-      },
-    };
-  }
-
-  // Pure Standard Google Chat API response
-  return {
-    actionResponse: {
-      type: 'NEW_MESSAGE',
-    },
-    ...(resolvedCards ? { cardsV2: resolvedCards } : { text }),
-  };
-}
 
 /**
  * Handles interactive Form submit button clicks on Google Chat Cards v2.

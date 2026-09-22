@@ -131,7 +131,10 @@ describe('GoogleChatAdapter & Cards v2 (Zero-Knowledge & Discrepancy Flow)', () 
     // Button to submit justification
     const button = (card.cardsV2[0].card.sections[0].widgets.find((w: any) => w.buttonList) as any)
       .buttonList.buttons[0];
-    expect(button.onClick.action.function).toBe('submitHoursExplanation');
+    expect(button.onClick.action.parameters).toContainEqual({
+      key: 'actionName',
+      value: 'submitHoursExplanation',
+    });
     expect(button.onClick.action.parameters).toContainEqual({
       key: 'reconciliationRecordId',
       value: 'rec-test',
@@ -191,11 +194,18 @@ describe('GoogleChatAdapter & Cards v2 (Zero-Knowledge & Discrepancy Flow)', () 
     ]);
     const button = (card.cardsV2[0].card.sections[0].widgets.find((w: any) => w.buttonList) as any)
       .buttonList.buttons[0];
-    expect(button.onClick.action.function).toBe('submitHoursConfirmation');
-    expect(button.onClick.action.parameters).toEqual([
-      { key: 'reconciliationRecordId', value: 'rec-xyz-123' },
-      { key: 'inputFieldName', value: 'hours_recxyz123' },
-    ]);
+    expect(button.onClick.action.parameters).toContainEqual({
+      key: 'actionName',
+      value: 'submitHoursConfirmation',
+    });
+    expect(button.onClick.action.parameters).toContainEqual({
+      key: 'reconciliationRecordId',
+      value: 'rec-xyz-123',
+    });
+    expect(button.onClick.action.parameters).toContainEqual({
+      key: 'inputFieldName',
+      value: 'hours_recxyz123',
+    });
   });
 
   it('getMessagingAdapter activates GoogleChatAdapter when MESSAGING_CHANNEL is google_chat', () => {
