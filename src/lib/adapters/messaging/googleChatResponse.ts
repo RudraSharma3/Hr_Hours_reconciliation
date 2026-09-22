@@ -1,0 +1,1 @@
+export { formatChatResponse } from './googleChatAdapter';
