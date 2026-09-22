@@ -459,6 +459,9 @@ async function handleCardClick(event: any, isAddOn: boolean = true) {
 
   const diff: number = Math.abs(confirmedHours - record.erpHours);
 
+  // eslint-disable-next-line no-console
+  console.log(`[handleCardClick] Parsed confirmedHours: ${confirmedHours} (type: ${typeof confirmedHours}), diff: ${diff}, erpHours: ${record.erpHours}`);
+
   // Exact response requested by user when hours are entered and submit is clicked
   const responsePayload = {
     actionResponse: {
