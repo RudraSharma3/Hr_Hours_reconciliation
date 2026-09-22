@@ -15,6 +15,32 @@ import type { MessagingAdapter, OutboundMessage, OutboundMessageContext, SendRes
 
 let cachedOAuthToken: { accessToken: string; expiresAt: number } | null = null;
 
+/**
+ * For Google Workspace Add-on HTTP Chat apps, card `action.function` must be the
+ * full HTTPS endpoint URL (not a bare name like `submitHoursConfirmation`).
+ * A bare name makes Google look for a Cloud Function / Apps Script deployment
+ * (`deploymentFunction` in Chat error logs) and the click never reaches ngrok.
+ *
+ * The real handler name is passed as parameter `actionName`.
+ */
+export function getChatActionFunctionUrl(): string {
+  const explicit = process.env.GOOGLE_CHAT_HTTP_ENDPOINT?.trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+  const base = process.env.APP_BASE_URL?.trim().replace(/\/$/, '');
+  if (base) return `${base}/api/chat/google`;
+  return 'submitHoursConfirmation'; // legacy fallback (broken for HTTP add-ons)
+}
+
+function buildCardAction(
+  actionName: string,
+  parameters: Array<{ key: string; value: string }>
+) {
+  return {
+    function: getChatActionFunctionUrl(),
+    parameters: [{ key: 'actionName', value: actionName }, ...parameters],
+  };
+}
+
 export class GoogleChatAdapter implements MessagingAdapter {
   readonly channel = 'GOOGLE_CHAT';
 
@@ -31,8 +57,8 @@ export class GoogleChatAdapter implements MessagingAdapter {
       // eslint-disable-next-line no-console
       console.log(
         `\n🤖 [MOCK GOOGLE CHAT BOT] Message to: ${message.recipient}\n` +
-        `Subject: ${message.subject ?? '(none)'}\n` +
-        `Payload:\n${JSON.stringify(payload, null, 2)}\n`
+          `Subject: ${message.subject ?? '(none)'}\n` +
+          `Payload:\n${JSON.stringify(payload, null, 2)}\n`
       );
       return { mocked: true };
     }
@@ -220,13 +246,13 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
                   },
                   ...(ctx.previousConfirmedHours != null
                     ? [
-                      {
-                        decoratedText: {
-                          topLabel: 'Employee Confirmed',
-                          text: `<b>${ctx.previousConfirmedHours} hrs</b> (Difference: ${ctx.previousDifference ?? 0} hrs)`,
+                        {
+                          decoratedText: {
+                            topLabel: 'Employee Confirmed',
+                            text: `<b>${ctx.previousConfirmedHours} hrs</b> (Difference: ${ctx.previousDifference ?? 0} hrs)`,
+                          },
                         },
-                      },
-                    ]
+                      ]
                     : []),
                   {
                     textParagraph: {
@@ -271,15 +297,11 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
           {
             text: isMismatch ? 'Submit Revised Hours' : 'Submit Hours',
             onClick: {
-              action: {
-                // actionMethodName: 'submitHoursConfirmation', // 👈 Required for HTTP Endpoints to receive CARD_CLICKED webhooks
-                function: 'submitHoursConfirmation',
-                parameters: [
-                  { key: 'reconciliationRecordId', value: ctx.reconciliationRecordId },
-                  { key: 'inputFieldName', value: 'confirmedHours' },
-                  { key: 'recipientEmail', value: message.recipient },
-                ],
-              },
+              action: buildCardAction('submitHoursConfirmation', [
+                { key: 'reconciliationRecordId', value: String(ctx.reconciliationRecordId) },
+                { key: 'inputFieldName', value: 'confirmedHours' },
+                { key: 'recipientEmail', value: String(message.recipient) },
+              ]),
             },
           },
         ],
@@ -411,14 +433,10 @@ export function buildDiscrepancyQuestionCard(params: {
                       {
                         text: 'Submit Justification for HR Review',
                         onClick: {
-                          action: {
-                            // actionMethodName: 'submitHoursExplanation',
-                            function: 'submitHoursExplanation',
-                            parameters: [
-                              { key: 'reconciliationRecordId', value: params.recordId },
-                              { key: 'confirmedHours', value: String(params.confirmedHours) },
-                            ],
-                          },
+                          action: buildCardAction('submitHoursExplanation', [
+                            { key: 'reconciliationRecordId', value: String(params.recordId) },
+                            { key: 'confirmedHours', value: String(params.confirmedHours) },
+                          ]),
                         },
                       },
                     ],
@@ -565,14 +583,10 @@ export function buildPendingRequestsCard(
                       {
                         text: 'Submit Hours',
                         onClick: {
-                          action: {
-                            // actionMethodName: 'submitHoursConfirmation',
-                            function: 'submitHoursConfirmation',
-                            parameters: [
-                              { key: 'reconciliationRecordId', value: rec.id },
-                              { key: 'inputFieldName', value: fieldName },
-                            ],
-                          },
+                          action: buildCardAction('submitHoursConfirmation', [
+                            { key: 'reconciliationRecordId', value: String(rec.id) },
+                            { key: 'inputFieldName', value: String(fieldName) },
+                          ]),
                         },
                       },
                     ],
@@ -728,3 +742,71 @@ function signJwtAssertion(header: object, payload: object, privateKey: string): 
   return `${encHeader}.${encPayload}.${signature}`;
 }
 
+/**
+ * Google Chat response envelope helpers (Z Mode / classic Chat API).
+ *
+ * Workspace Add-on deployments MUST return a pure hostAppDataAction envelope
+ * with no conflicting root fields (actionResponse / text / cardsV2). Mixing
+ * those shapes causes Chat log error code 3: "Can't post a reply… response was invalid."
+ */
+
+export function formatChatResponse(
+  payload: {
+    cardsV2?: unknown[];
+    text?: string;
+    title?: string;
+  },
+  options: { isCardAction?: boolean; isAddOn?: boolean } = {}
+) {
+  const isCardAction = options.isCardAction ?? false;
+  const isAddOn = options.isAddOn ?? true; // Google Workspace Add-on default
+  const cardsV2 = payload.cardsV2;
+  const text = payload.text;
+
+  const fallbackCardsV2 = cardsV2 ?? [
+    {
+      cardId: `reconciliation-action-fallback-${Date.now()}`,
+      card: {
+        header: { title: payload.title ?? 'Hours Reconciliation' },
+        sections: [
+          {
+            widgets: [
+              {
+                textParagraph: {
+                  text: text ?? 'Updated successfully.',
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ];
+
+  const resolvedCards = cardsV2 ?? (isCardAction ? fallbackCardsV2 : undefined);
+
+  if (isAddOn) {
+    // Pure Google Workspace Add-on (Z Mode) response — no conflicting root fields.
+    // Card clicks must use updateMessageAction (verified working envelope).
+    // New messages (pending/help) use createMessageAction.
+    const message = resolvedCards
+      ? { cardsV2: resolvedCards }
+      : { text: text ?? (isCardAction ? 'Updated successfully.' : 'Message received.') };
+
+    return {
+      hostAppDataAction: {
+        chatDataAction: isCardAction
+          ? { updateMessageAction: { message } }
+          : { createMessageAction: { message } },
+      },
+    };
+  }
+
+  // Pure Standard Google Chat API response
+  return {
+    actionResponse: {
+      type: 'NEW_MESSAGE',
+    },
+    ...(resolvedCards ? { cardsV2: resolvedCards } : { text }),
+  };
+}
