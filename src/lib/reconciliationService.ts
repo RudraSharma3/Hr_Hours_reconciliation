@@ -422,20 +422,102 @@ export async function escalateUnresolved(): Promise<{ escalated: number }> {
 
 /** Admin marks a flagged/escalated record as approved & resolved after reviewing employee justification. */
 export async function approveRecord(recordId: string, adminEmail: string, note?: string): Promise<void> {
-  await prisma.reconciliationRecord.update({
+  const record = await prisma.reconciliationRecord.update({
     where: { id: recordId },
     data: { status: 'RESOLVED', finalisedAt: new Date() },
+    include: { employee: true, project: true },
   });
   await logAudit(recordId, 'APPROVED_BY_HR', adminEmail, { note: note ?? 'Approved by HR' });
+
+  // Dispatch outbound notification card to the employee in Google Chat / messaging
+  try {
+    const messaging = getMessagingAdapter();
+    const subject = `Timesheet Justification Approved — ${record.project.name} (${record.month})`;
+    const body = `Your timesheet justification for project "${record.project.name}" (${record.month}) has been approved by HR (${adminEmail}).${note ? ` Note: ${note}` : ''}`;
+
+    const result = await messaging.send({
+      recipient: record.employee.email,
+      subject,
+      body,
+      template: 'HR_APPROVAL',
+      context: {
+        reconciliationRecordId: record.id,
+        employeeName: record.employee.name,
+        projectName: record.project.name,
+        month: record.month,
+        erpHours: record.erpHours,
+        previousConfirmedHours: record.employeeConfirmedHours,
+        previousDifference: record.difference,
+        hrNote: note ?? 'Approved by HR',
+        kind: 'HR_APPROVAL',
+      },
+    });
+
+    await prisma.messageLog.create({
+      data: {
+        reconciliationRecordId: record.id,
+        channel: messaging.channel,
+        template: 'HR_APPROVAL',
+        recipient: record.employee.email,
+        subject,
+        body,
+        mocked: result.mocked,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[approveRecord] Error sending notification to employee:', err);
+  }
 }
 
 /** Admin rejects an employee justification and requests correction. */
 export async function rejectRecord(recordId: string, adminEmail: string, rejectionReason: string): Promise<void> {
-  await prisma.reconciliationRecord.update({
+  const record = await prisma.reconciliationRecord.update({
     where: { id: recordId },
     data: { status: 'CORRECTION_REQUESTED' },
+    include: { employee: true, project: true },
   });
   await logAudit(recordId, 'REJECTED_BY_HR', adminEmail, { rejectionReason });
+
+  // Dispatch outbound notification card with input to prompt revised hours from the employee in Google Chat / messaging
+  try {
+    const messaging = getMessagingAdapter();
+    const subject = `Action Required: Timesheet Correction Requested — ${record.project.name} (${record.month})`;
+    const body = `HR has reviewed your justification for ${record.project.name} (${record.month}) and requested a revision. Note: ${rejectionReason}`;
+
+    const result = await messaging.send({
+      recipient: record.employee.email,
+      subject,
+      body,
+      template: 'HR_REJECTION',
+      context: {
+        reconciliationRecordId: record.id,
+        employeeName: record.employee.name,
+        projectName: record.project.name,
+        month: record.month,
+        erpHours: record.erpHours,
+        previousConfirmedHours: record.employeeConfirmedHours,
+        previousDifference: record.difference,
+        hrNote: rejectionReason,
+        kind: 'HR_REJECTION',
+      },
+    });
+
+    await prisma.messageLog.create({
+      data: {
+        reconciliationRecordId: record.id,
+        channel: messaging.channel,
+        template: 'HR_REJECTION',
+        recipient: record.employee.email,
+        subject,
+        body,
+        mocked: result.mocked,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[rejectRecord] Error sending rejection notification to employee:', err);
+  }
 }
 
 /** Admin marks a flagged/escalated record as resolved after manual review. */

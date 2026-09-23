@@ -15,7 +15,8 @@ export type OutboundMessageContext = {
   erpHours: number;
   previousConfirmedHours?: number | null;
   previousDifference?: number | null;
-  kind: 'INITIAL_REQUEST' | 'MISMATCH_FOLLOWUP' | 'REMINDER' | 'ESCALATION_NOTICE';
+  hrNote?: string | null;
+  kind: 'INITIAL_REQUEST' | 'MISMATCH_FOLLOWUP' | 'REMINDER' | 'ESCALATION_NOTICE' | 'HR_REJECTION' | 'HR_APPROVAL';
 };
 
 export type OutboundMessage = {
