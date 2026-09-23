@@ -1,6 +1,29 @@
 import type { ErpTimesheetEntry } from './types';
 
 /**
+ * Default patterns/keywords to ignore when aggregating ERP timesheets.
+ * Excludes non-client / non-reconciliation overhead such as internal training,
+ * leaves, holidays, WFH requests, and L&D sessions.
+ */
+export const DEFAULT_EXCLUDED_PATTERNS = [
+  'learning phase',
+  'learning and development',
+  'learning & development',
+  'l&d',
+  'leave',
+  'leaves',
+  'annual leave',
+  'sick leave',
+  'casual leave',
+  'unpaid leave',
+  'holiday',
+  'holidays',
+  'public holiday',
+  'work from home',
+  'wfh',
+];
+
+/**
  * Shape we read out of ERPNext's Timesheet doctype (only the fields we
  * need). ERPNext's Timesheet has a `time_logs` child table with one row per
  * day/activity — see the "Timesheet Detail" child doctype. A single
@@ -16,8 +39,10 @@ export type ErpNextTimesheetDoc = {
   time_logs: {
     from_time: string; // ISO-ish datetime string, e.g. "2026-09-07 10:00:00"
     hours: number;
-    project?: string | null; // Project doctype id/name, e.g. "Learning Phase"
+    project?: string | null; // Project doctype id/name
     project_name?: string | null;
+    activity_type?: string | null;
+    description?: string | null;
   }[];
 };
 
@@ -27,22 +52,48 @@ export type ErpNextTimesheetDoc = {
 const COUNTED_STATUSES = new Set(['Submitted', 'Completed', 'Billed', 'Payslip']);
 
 /**
+ * Checks whether a given time log or project matches any excluded pattern.
+ */
+export function isExcludedActivityOrProject(
+  project?: string | null,
+  projectName?: string | null,
+  activityType?: string | null,
+  customPatterns?: string[]
+): boolean {
+  const patterns = customPatterns && customPatterns.length > 0 ? customPatterns : DEFAULT_EXCLUDED_PATTERNS;
+
+  const targets = [project, projectName, activityType]
+    .filter((v): v is string => Boolean(v && typeof v === 'string'))
+    .map((s) => s.toLowerCase().trim());
+
+  if (targets.length === 0) return false;
+
+  return patterns.some((p) => {
+    const cleanPattern = p.toLowerCase().trim();
+    if (!cleanPattern) return false;
+    return targets.some((target) => target === cleanPattern || target.includes(cleanPattern));
+  });
+}
+
+/**
  * Sum `time_logs` hours across one or more ERPNext Timesheet documents into
  * one entry per (employee, project) for the given target month, in the
  * exact shape every other ErpAdapter returns.
  *
- * Rows with no `project` are skipped (with a note in the caller) since our
- * data model requires a project per reconciliation record.
+ * Rows with no `project` or rows matching excluded non-client activities
+ * (Learning Phase, Leave, Holiday, WFH, L&D) are automatically filtered out.
  */
 export function aggregateErpNextTimesheets(
   docs: ErpNextTimesheetDoc[],
-  targetMonth: string
-): { entries: ErpTimesheetEntry[]; skippedNoProject: number } {
+  targetMonth: string,
+  options: { excludedPatterns?: string[] } = {}
+): { entries: ErpTimesheetEntry[]; skippedNoProject: number; skippedExcluded: number } {
   const totals = new Map<
     string,
     { erpHours: number; employeeName?: string; projectName?: string }
   >();
   let skippedNoProject = 0;
+  let skippedExcluded = 0;
 
   for (const doc of docs) {
     if (!COUNTED_STATUSES.has(doc.status)) continue;
@@ -53,6 +104,19 @@ export function aggregateErpNextTimesheets(
 
       if (!log.project) {
         skippedNoProject += 1;
+        continue;
+      }
+
+      // Filter out internal learning, leaves, holidays, WFH, L&D
+      if (
+        isExcludedActivityOrProject(
+          log.project,
+          log.project_name,
+          log.activity_type,
+          options.excludedPatterns
+        )
+      ) {
+        skippedExcluded += 1;
         continue;
       }
 
@@ -78,5 +142,6 @@ export function aggregateErpNextTimesheets(
     };
   });
 
-  return { entries, skippedNoProject };
+  return { entries, skippedNoProject, skippedExcluded };
 }
+
