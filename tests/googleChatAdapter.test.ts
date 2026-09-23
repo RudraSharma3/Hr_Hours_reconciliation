@@ -208,6 +208,102 @@ describe('GoogleChatAdapter & Cards v2 (Zero-Knowledge & Discrepancy Flow)', () 
     });
   });
 
+  it('buildGoogleChatCardPayload generates HR correction requested card with HR note and revised input', () => {
+    const msg: OutboundMessage = {
+      recipient: 'rudra@evolra.in',
+      subject: 'Action Required: Timesheet Correction Requested — Project Delta (2026-08)',
+      body: 'HR has reviewed your justification and requested a revision. Note: poor explanation',
+      template: 'HR_REJECTION',
+      context: {
+        reconciliationRecordId: 'rec-rej-1',
+        employeeName: 'Rudra Sharma',
+        projectName: 'Project Delta',
+        month: '2026-08',
+        erpHours: 72,
+        previousConfirmedHours: 100,
+        previousDifference: 28,
+        hrNote: 'poor explanation',
+        kind: 'HR_REJECTION',
+      },
+    };
+
+    const payload = buildGoogleChatCardPayload(msg);
+    expect(payload.cardsV2).toBeDefined();
+    const card = payload.cardsV2[0].card;
+    expect(card.header.title).toContain('HR Correction Requested');
+    expect(card.header.subtitle).toContain('Rudra Sharma');
+
+    const widgets = card.sections[0].widgets;
+    const noteWidget = widgets.find((w: any) => w.decoratedText?.topLabel === 'Note from HR') as any;
+    expect(noteWidget).toBeDefined();
+    expect(noteWidget.decoratedText.text).toContain('poor explanation');
+
+    const inputWidget = widgets.find((w: any) => w.textInput?.name === 'confirmedHours') as any;
+    expect(inputWidget).toBeDefined();
+    expect(inputWidget.textInput.label).toContain('Revised hours for Project Delta');
+
+    const buttonWidget = widgets.find((w: any) => w.buttonList) as any;
+    expect(buttonWidget.buttonList.buttons[0].text).toBe('Submit Revised Hours');
+  });
+
+  it('buildGoogleChatCardPayload generates HR approval card with status and HR note', () => {
+    const msg: OutboundMessage = {
+      recipient: 'rudra@evolra.in',
+      subject: 'Timesheet Justification Approved — Project Delta (2026-08)',
+      body: 'Your timesheet justification has been approved.',
+      template: 'HR_APPROVAL',
+      context: {
+        reconciliationRecordId: 'rec-app-1',
+        employeeName: 'Rudra Sharma',
+        projectName: 'Project Delta',
+        month: '2026-08',
+        erpHours: 72,
+        previousConfirmedHours: 100,
+        previousDifference: 28,
+        hrNote: 'Approved after lead review',
+        kind: 'HR_APPROVAL',
+      },
+    };
+
+    const payload = buildGoogleChatCardPayload(msg);
+    const card = payload.cardsV2[0].card;
+    expect(card.header.title).toContain('Timesheet Approved');
+
+    const widgets = card.sections[0].widgets;
+    const statusWidget = widgets.find((w: any) => w.decoratedText?.topLabel === 'Status') as any;
+    expect(statusWidget.decoratedText.text).toContain('RESOLVED & APPROVED BY HR');
+
+    const noteWidget = widgets.find((w: any) => w.decoratedText?.topLabel === 'HR Decision Note') as any;
+    expect(noteWidget.decoratedText.text).toContain('Approved after lead review');
+
+    const inputWidget = widgets.find((w: any) => w.textInput);
+    expect(inputWidget).toBeUndefined();
+  });
+
+  it('buildPendingRequestsCard shows HR feedback and Revised Hours input for CORRECTION_REQUESTED records', () => {
+    const card = buildPendingRequestsCard('Rudra Sharma', [
+      {
+        id: 'rec-corr-1',
+        projectName: 'Project Delta',
+        month: '2026-08',
+        status: 'CORRECTION_REQUESTED',
+        hrNote: 'poor explanation',
+      },
+    ]);
+
+    const section = card.cardsV2[0].card.sections[0];
+    const widgets = section.widgets;
+
+    const statusWidget = widgets.find((w: any) => w.decoratedText?.topLabel === 'Status') as any;
+    expect(statusWidget.decoratedText.text).toContain('HR CORRECTION REQUESTED');
+
+    const noteWidget = widgets.find((w: any) => w.decoratedText?.topLabel === 'HR Feedback / Note') as any;
+    expect(noteWidget.decoratedText.text).toContain('poor explanation');
+
+    const button = (widgets.find((w: any) => w.buttonList) as any).buttonList.buttons[0];
+    expect(button.text).toBe('Submit Revised Hours');
+  });
+
   it('getMessagingAdapter activates GoogleChatAdapter when MESSAGING_CHANNEL is google_chat', () => {
     process.env.MESSAGING_CHANNEL = 'google_chat';
     const adapter = getMessagingAdapter();
@@ -215,3 +311,4 @@ describe('GoogleChatAdapter & Cards v2 (Zero-Knowledge & Discrepancy Flow)', () 
     expect(adapter).toBeInstanceOf(GoogleChatAdapter);
   });
 });
+

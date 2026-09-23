@@ -571,7 +571,15 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
       employeeId: { in: matchingEmployeeIds },
       status: { in: ['AWAITING_RESPONSE', 'CORRECTION_REQUESTED', 'FLAGGED'] },
     },
-    include: { project: true, employee: true },
+    include: {
+      project: true,
+      employee: true,
+      auditEvents: {
+        where: { eventType: 'REJECTED_BY_HR' },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
     orderBy: [{ month: 'desc' }, { createdAt: 'desc' }],
   });
 
@@ -580,12 +588,23 @@ async function handleChatMessage(text: string, userEmail?: string, userName?: st
 
   const cardPayload = buildPendingRequestsCard(
     empDisplayName,
-    pendingRecords.map((r) => ({
-      id: r.id,
-      projectName: r.project.name,
-      month: r.month,
-      status: r.status,
-    }))
+    pendingRecords.map((r) => {
+      let hrNote: string | null = null;
+      if (r.status === 'CORRECTION_REQUESTED' && r.auditEvents?.[0]?.details) {
+        try {
+          const parsed = JSON.parse(r.auditEvents[0].details);
+          hrNote = parsed.rejectionReason || parsed.note || null;
+        } catch {}
+      }
+
+      return {
+        id: r.id,
+        projectName: r.project.name,
+        month: r.month,
+        status: r.status,
+        hrNote,
+      };
+    })
   );
 
   // Cards only inside createMessageAction (no root text) — Z Mode.

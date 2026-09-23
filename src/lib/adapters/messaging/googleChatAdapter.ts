@@ -207,6 +207,8 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
   const isEscalation = ctx.kind === 'ESCALATION_NOTICE';
   const isMismatch = ctx.kind === 'MISMATCH_FOLLOWUP';
   const isReminder = ctx.kind === 'REMINDER';
+  const isHrRejection = ctx.kind === 'HR_REJECTION';
+  const isHrApproval = ctx.kind === 'HR_APPROVAL';
 
   let title = `Timesheet Verification (${ctx.month})`;
   let subtitle = `${ctx.employeeName} • ${ctx.projectName}`;
@@ -214,10 +216,135 @@ export function buildGoogleChatCardPayload(message: OutboundMessage) {
   if (isEscalation) {
     title = `⚠️ Escalation: Discrepancy for ${ctx.month}`;
     subtitle = `HR Escalation Review • ${ctx.employeeName}`;
+  } else if (isHrRejection) {
+    title = `⚠️ HR Correction Requested (${ctx.month})`;
+    subtitle = `${ctx.employeeName} • ${ctx.projectName}`;
+  } else if (isHrApproval) {
+    title = `✅ Timesheet Approved (${ctx.month})`;
+    subtitle = `${ctx.employeeName} • ${ctx.projectName}`;
   } else if (isMismatch) {
     title = `⚠️ Action Needed: Hours Mismatch (${ctx.month})`;
   } else if (isReminder) {
     title = `⏰ Reminder: Hours Verification (${ctx.month})`;
+  }
+
+  // HR Approval notice for employee
+  if (isHrApproval) {
+    return {
+      cardsV2: [
+        {
+          cardId: `reconciliation-approved-${ctx.reconciliationRecordId}`,
+          card: {
+            header: { title, subtitle },
+            sections: [
+              {
+                header: 'Approval Details',
+                widgets: [
+                  {
+                    decoratedText: {
+                      topLabel: 'Status',
+                      text: '<b>RESOLVED & APPROVED BY HR</b>',
+                    },
+                  },
+                  {
+                    decoratedText: {
+                      topLabel: 'Final Reconciled Hours',
+                      text: `<b>${ctx.previousConfirmedHours ?? ctx.erpHours} hrs</b> on ${ctx.projectName}`,
+                    },
+                  },
+                  ...(ctx.hrNote
+                    ? [
+                        {
+                          decoratedText: {
+                            topLabel: 'HR Decision Note',
+                            text: `<i>"${ctx.hrNote}"</i>`,
+                          },
+                        },
+                      ]
+                    : []),
+                  {
+                    textParagraph: {
+                      text: `Your timesheet justification for <b>${ctx.projectName}</b> (${ctx.month}) has been reviewed and approved by HR. Your record is now finalized.`,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+  }
+
+  // HR Rejection / Correction Requested notice for employee
+  if (isHrRejection) {
+    return {
+      cardsV2: [
+        {
+          cardId: `reconciliation-rejected-${ctx.reconciliationRecordId}`,
+          card: {
+            header: { title, subtitle },
+            sections: [
+              {
+                header: 'HR Review Feedback & Revision Required',
+                widgets: [
+                  {
+                    decoratedText: {
+                      topLabel: 'Status',
+                      text: '<b>CORRECTION REQUESTED BY HR</b>',
+                    },
+                  },
+                  {
+                    decoratedText: {
+                      topLabel: 'Note from HR',
+                      text: `<b>"${ctx.hrNote || 'Please review and resubmit your hours.'}"</b>`,
+                    },
+                  },
+                  ...(ctx.previousConfirmedHours != null
+                    ? [
+                        {
+                          decoratedText: {
+                            topLabel: 'Previously Submitted',
+                            text: `<b>${ctx.previousConfirmedHours} hrs</b> on ${ctx.projectName}`,
+                          },
+                        },
+                      ]
+                    : []),
+                  {
+                    textParagraph: {
+                      text: `HR has reviewed your justification for <b>${ctx.projectName}</b> and requested a revision.<br>Please enter your updated/corrected hours below.`,
+                    },
+                  },
+                  {
+                    textInput: {
+                      name: 'confirmedHours',
+                      label: `Revised hours for ${ctx.projectName}`,
+                      type: 'SINGLE_LINE',
+                    },
+                  },
+                  {
+                    buttonList: {
+                      buttons: [
+                        {
+                          text: 'Submit Revised Hours',
+                          onClick: {
+                            action: buildCardAction('submitHoursConfirmation', [
+                              { key: 'reconciliationRecordId', value: String(ctx.reconciliationRecordId) },
+                              { key: 'inputFieldName', value: 'confirmedHours' },
+                              { key: 'recipientEmail', value: String(message.recipient) },
+                            ]),
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
   }
 
   // Escalation notice for HR
@@ -521,6 +648,7 @@ export function buildPendingRequestsCard(
     month: string;
     status: string;
     employeeName?: string;
+    hrNote?: string | null;
   }>
 ) {
   if (records.length === 0) {
@@ -562,37 +690,65 @@ export function buildPendingRequestsCard(
           },
           sections: records.map((rec) => {
             const fieldName = `hours_${rec.id.replace(/-/g, '')}`;
+            const isCorrection = rec.status === 'CORRECTION_REQUESTED';
+
+            const widgets: unknown[] = [];
+
+            if (isCorrection) {
+              widgets.push({
+                decoratedText: {
+                  topLabel: 'Status',
+                  text: '<b>⚠️ HR CORRECTION REQUESTED</b>',
+                },
+              });
+              if (rec.hrNote) {
+                widgets.push({
+                  decoratedText: {
+                    topLabel: 'HR Feedback / Note',
+                    text: `<b>"${rec.hrNote}"</b>`,
+                  },
+                });
+              }
+              widgets.push({
+                textParagraph: {
+                  text: `Please enter your <b>revised hours</b> for <b>${rec.projectName}</b> (${rec.month}):`,
+                },
+              });
+            } else {
+              widgets.push({
+                textParagraph: {
+                  text: `How many hours did you spend on <b>${rec.projectName}</b> during ${rec.month}?`,
+                },
+              });
+            }
+
+            widgets.push({
+              textInput: {
+                name: fieldName,
+                label: isCorrection ? `Revised hours for ${rec.projectName}` : `Hours spent on ${rec.projectName}`,
+                type: 'SINGLE_LINE',
+              },
+            });
+
+            widgets.push({
+              buttonList: {
+                buttons: [
+                  {
+                    text: isCorrection ? 'Submit Revised Hours' : 'Submit Hours',
+                    onClick: {
+                      action: buildCardAction('submitHoursConfirmation', [
+                        { key: 'reconciliationRecordId', value: String(rec.id) },
+                        { key: 'inputFieldName', value: String(fieldName) },
+                      ]),
+                    },
+                  },
+                ],
+              },
+            });
+
             return {
               header: `${rec.employeeName ? `${rec.employeeName} • ` : ''}${rec.projectName} • ${rec.month}`,
-              widgets: [
-                {
-                  textParagraph: {
-                    text: `How many hours did you spend on <b>${rec.projectName}</b> during ${rec.month}?`,
-                  },
-                },
-                {
-                  textInput: {
-                    name: fieldName,
-                    label: `Hours spent on ${rec.projectName}`,
-                    type: 'SINGLE_LINE',
-                  },
-                },
-                {
-                  buttonList: {
-                    buttons: [
-                      {
-                        text: 'Submit Hours',
-                        onClick: {
-                          action: buildCardAction('submitHoursConfirmation', [
-                            { key: 'reconciliationRecordId', value: String(rec.id) },
-                            { key: 'inputFieldName', value: String(fieldName) },
-                          ]),
-                        },
-                      },
-                    ],
-                  },
-                },
-              ],
+              widgets,
             };
           }),
         },
