@@ -40,7 +40,21 @@ export class ErpNextAdapter implements ErpAdapter {
     }
 
     const docs = await this.fetchTimesheetDocs(month, employeeCode);
-    const { entries, skippedNoProject } = aggregateErpNextTimesheets(docs, month);
+    const rawExcluded = process.env.ERP_EXCLUDED_PATTERNS;
+    const excludedPatterns = rawExcluded
+      ? rawExcluded.split(',').map((s) => s.trim()).filter(Boolean)
+      : undefined;
+
+    const { entries, skippedNoProject, skippedExcluded } = aggregateErpNextTimesheets(docs, month, {
+      excludedPatterns,
+    });
+
+    if (skippedExcluded > 0) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[ErpNextAdapter] Filtered out ${skippedExcluded} time log(s) matching excluded non-client patterns (Learning Phase, Leave, Holiday, WFH, L&D).`
+      );
+    }
 
     // Fetch employee details (company_email, personal_email, user_id) from ERPNext
     try {
